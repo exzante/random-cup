@@ -1155,8 +1155,8 @@ function flowerJoke() {
 }
 function joinMsg() {
   const ov = openModal(`
-    <div class="mtitle">Залетай к нам 💬</div>
-    <div class="mbody">Мы пока не нашли Discord-сервер, который стоит спонсировать 😅<br><br>Как только найдём достойный — сразу позовём. Оставайся на связи!</div>
+    <div class="mtitle">Сообщество</div>
+    <div class="mbody">Мы пока подбираем площадку для комьюнити и не готовы анонсировать её раньше времени.<br><br>Как только определимся — вы узнаете первыми.</div>
     <div class="mrow"><button class="btn primary" id="mOk">Понятно</button></div>`);
   ov.querySelector('#mOk').onclick = () => closeModal(ov);
   ov.onclick = e => { if (e.target === ov) closeModal(ov); };
@@ -2065,7 +2065,7 @@ function screenHome() {
       <h1>Dubai Project</h1>
       <div class="rule"><span>Турнирный менеджер</span></div>
       <div class="byline">by <b>EXZANTE</b></div>
-      <span class="dlink" data-action="join" style="cursor:pointer" data-tip="Скоро расскажем 😉">💬 Залетай к нам</span>
+      <span class="dlink" data-action="join" style="cursor:pointer" data-tip="Скоро анонсируем">💬 Сообщество</span>
     </div>
     ${DB.tournaments.length ? `<div class="statrow">
       <div class="stat cut"><b>${DB.tournaments.length}</b><span>турниров</span></div>
@@ -2076,7 +2076,7 @@ function screenHome() {
     ${cards ? `<div class="tlist">${cards}</div>`
       : `<div class="empty"><span class="big">🏟️</span>Пока пусто. Жми <b>«+ Новый турнир»</b> сверху — займёт полминуты.</div>`}
     <div class="homefoot">
-      <span class="dlink" data-action="join" style="cursor:pointer" data-tip="Скоро расскажем 😉">💬 залетай к нам</span>
+      <span class="dlink" data-action="join" style="cursor:pointer" data-tip="Скоро анонсируем">💬 сообщество</span>
       <span class="dot">·</span>
       <span>made by EXZANTE</span>
       <span class="dot">·</span>
