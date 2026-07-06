@@ -1153,6 +1153,15 @@ function flowerJoke() {
   const j = FLOWER_JOKES[Math.floor(Math.random() * FLOWER_JOKES.length)];
   toast(j, '🌻', true);
 }
+function joinMsg() {
+  const ov = openModal(`
+    <div class="mtitle">Залетай к нам 💬</div>
+    <div class="mbody">Мы пока не нашли Discord-сервер, который стоит спонсировать 😅<br><br>Как только найдём достойный — сразу позовём. Оставайся на связи!</div>
+    <div class="mrow"><button class="btn primary" id="mOk">Понятно</button></div>`);
+  ov.querySelector('#mOk').onclick = () => closeModal(ov);
+  ov.onclick = e => { if (e.target === ov) closeModal(ov); };
+  ov.querySelector('#mOk').focus();
+}
 
 /* ================= actions ================= */
 function createTournament(name, format, names, opts) {
@@ -2056,7 +2065,7 @@ function screenHome() {
       <h1>Dubai Project</h1>
       <div class="rule"><span>Турнирный менеджер</span></div>
       <div class="byline">by <b>EXZANTE</b></div>
-      <a class="dlink" href="https://discord.gg/zxc" target="_blank" rel="noopener">💬 Залетай в Discord</a>
+      <span class="dlink" data-action="join" style="cursor:pointer" data-tip="Скоро расскажем 😉">💬 Залетай к нам</span>
     </div>
     ${DB.tournaments.length ? `<div class="statrow">
       <div class="stat cut"><b>${DB.tournaments.length}</b><span>турниров</span></div>
@@ -2067,7 +2076,7 @@ function screenHome() {
     ${cards ? `<div class="tlist">${cards}</div>`
       : `<div class="empty"><span class="big">🏟️</span>Пока пусто. Жми <b>«+ Новый турнир»</b> сверху — займёт полминуты.</div>`}
     <div class="homefoot">
-      <a href="https://discord.gg/zxc" target="_blank" rel="noopener">💬 наш Discord</a>
+      <span class="dlink" data-action="join" style="cursor:pointer" data-tip="Скоро расскажем 😉">💬 залетай к нам</span>
       <span class="dot">·</span>
       <span>made by EXZANTE</span>
       <span class="dot">·</span>
@@ -2456,6 +2465,7 @@ document.addEventListener('click', async e => {
   }
   else if (a === 'pstats') showPlayerStats(el.dataset.name);
   else if (a === 'flower') flowerJoke();
+  else if (a === 'join') joinMsg();
   else if (a === 'share') { if (t) shareFlow(t); }
   else if (a === 'mute') {
     soundOn = !soundOn;
