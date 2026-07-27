@@ -475,6 +475,22 @@ canvas.confetti{position:fixed;inset:0;z-index:100;pointer-events:none}
 .creds{display:flex;align-items:center;gap:12px;padding:9px 13px;background:var(--panel2);border:1px solid var(--line);margin-top:8px}
 .creds span{font-family:var(--disp);font-size:10px;letter-spacing:.18em;text-transform:uppercase;color:var(--dim);width:60px}
 .creds b{font-family:var(--disp);font-size:18px;color:var(--gold2);letter-spacing:.05em}
+.posset{display:inline-flex;gap:4px}
+.posgrid{display:flex;flex-wrap:wrap;gap:8px}
+.poschk{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);background:var(--panel2);border:1px solid var(--line2);padding:6px 10px;cursor:pointer}
+.poschk input{accent-color:var(--gold);width:15px;height:15px}
+.posrows{display:flex;flex-direction:column;gap:12px;margin-top:4px}
+.posrow{--c:12px;--bl:var(--line);padding:12px 15px}
+.posrowhead{display:flex;align-items:center;gap:9px;font-family:var(--disp);font-size:12px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--gold2);margin-bottom:10px}
+.posrown{display:inline-grid;place-items:center;width:22px;height:22px;background:var(--gold-soft);border:1px solid var(--gold-deep);color:var(--gold2);font-size:12px}
+.poscount{margin-left:auto;font-size:10px;font-weight:700;color:var(--dim);background:var(--panel2);border:1px solid var(--line);padding:1px 8px}
+.posrowlist{display:flex;flex-wrap:wrap;gap:8px}
+.poschip{--c:8px;--bl:var(--line2);display:inline-flex;align-items:center;gap:8px;padding:6px 12px 6px 7px;cursor:pointer;transition:transform .12s}
+.poschip:hover{transform:translateY(-1px);--bl:var(--gold-deep)}
+.poschip .pcn{font-weight:600;font-size:13px}
+.poschip .pcm{font-family:var(--disp);font-weight:700;font-size:12px;color:var(--gold2);font-variant-numeric:tabular-nums}
+.poschip.multi{--bl:linear-gradient(135deg,var(--teal),var(--gold-deep))}
+.poschip.multi .pcn{color:var(--teal)}
 /* страница профиля */
 .profwrap{max-width:760px;margin:20px auto 44px}
 .profhead{--c:14px;--bl:var(--line2);display:flex;align-items:center;gap:18px;padding:20px 22px;flex-wrap:wrap}
@@ -1510,6 +1526,8 @@ function playerToPayload(p) {
 }
 const POS_LABELS = { '1': 'Керри (1)', '2': 'Мид (2)', '3': 'Оффлейн (3)', '4': 'Саппорт (4)', '5': 'Хард саппорт (5)' };
 function posLabel(pos) { return POS_LABELS[pos] || ''; }
+function posArr(p) { return (p && p.pos ? String(p.pos) : '').split(',').map(s => s.trim()).filter(Boolean); }
+function posBadges(p) { return posArr(p).map(n => `<span class="posbadge" data-tip="${esc(posLabel(n))}">${n}</span>`).join(''); }
 let regSyncing = false;
 async function regLoad() {
   regSyncing = true; if (view.screen === 'players') renderTopbar();
@@ -2227,7 +2245,9 @@ function renderTopbar() {
       ? `<button class="btn sm ghost" data-action="players">← К игрокам</button>`
       : `${addBtn}<button class="btn sm ghost" data-action="home">← Все турниры</button>`}
     ${['home', 'players', 'profile'].includes(view.screen)
-      ? `<button class="btn sm icon ghost" data-action="adminlogin" data-tip="${isAdmin() ? 'Организатор — выйти' : isPlayer() ? ('@' + esc(rcPlayer.username) + ' — выйти') : 'Вход'}">${isAdmin() ? '🔓' : isPlayer() ? '👤' : '🔒'}</button>` : ''}
+      ? (isPlayer()
+        ? `<button class="btn sm icon ghost" data-action="myprofile" data-tip="@${esc(rcPlayer.username)} — мой профиль">👤</button>`
+        : `<button class="btn sm icon ghost" data-action="adminlogin" data-tip="${isAdmin() ? 'Организатор — выйти' : 'Вход'}">${isAdmin() ? '🔓' : '🔒'}</button>`) : ''}
     <button class="btn sm icon ghost" data-action="mute" data-tip="${soundOn ? 'Звук включён' : 'Звук выключен'}">${soundOn ? '🔊' : '🔇'}</button>
     <button class="btn sm icon ghost" data-action="help" data-tip="Справка">❔</button>
     ${view.screen === 'home' ? `<button class="btn primary sm" data-action="new">+ Новый турнир</button>` : ''}
@@ -2343,6 +2363,22 @@ function regTitles(pid) {
   }
   return g;
 }
+let regView = 'list';
+function posChipHtml(p) {
+  const multi = posArr(p).length > 1;
+  return `<button class="poschip cut ${multi ? 'multi' : ''}" data-action="pprofile" data-pid="${p.id}" data-tip="${multi ? 'Играет на нескольких позициях' : ''}">
+    ${avatarByName(p.nick || p.name)}<span class="pcn">${esc(p.nick || p.name)}</span>${p.mmr != null ? `<span class="pcm">${p.mmr}</span>` : ''}${p.lft ? '<span class="pclft" data-tip="Ищет команду">🔎</span>' : ''}
+  </button>`;
+}
+function posRowsHtml(list) {
+  return ['1', '2', '3', '4', '5'].map(n => {
+    const players = list.filter(p => posArr(p).includes(n)).sort((a, b) => (b.mmr || 0) - (a.mmr || 0));
+    return `<div class="posrow cut">
+      <div class="posrowhead"><span class="posrown">${n}</span>${esc(POS_LABELS[n].replace(/\s*\(\d\)/, ''))}<span class="poscount">${players.length}</span></div>
+      <div class="posrowlist">${players.length ? players.map(posChipHtml).join('') : '<span class="note">никого</span>'}</div>
+    </div>`;
+  }).join('');
+}
 function screenPlayers() {
   const admin = isAdmin();
   const list = regPlayers();
@@ -2355,9 +2391,9 @@ function screenPlayers() {
         <button class="mini" data-action="pedit" data-pid="${p.id}" data-tip="Изменить">✎</button>
         <button class="mini del" data-action="pregdel" data-pid="${p.id}" data-tip="Удалить из базы">✕</button>
       </span>` : '';
-    const pos = p.pos ? `<span class="posmini" data-tip="Позиция">${esc(p.pos)}</span>` : '';
+    const pos = posArr(p).map(n => `<span class="posmini" data-tip="${esc(posLabel(n))}">${n}</span>`).join('');
     const lft = p.lft ? `<span class="lftbadge" data-tip="${esc(p.lftNote || 'Ищет команду')}">🔎 LFT</span>` : '';
-    const tip = [p.nick ? '@' + p.nick : '', p.mmr != null ? p.mmr + ' MMR' : '', posLabel(p.pos), p.lft ? 'ищет команду' : ''].filter(Boolean).join(' · ') || 'Открыть профиль';
+    const tip = [p.nick ? '@' + p.nick : '', p.mmr != null ? p.mmr + ' MMR' : '', posArr(p).map(posLabel).join(', '), p.lft ? 'ищет команду' : ''].filter(Boolean).join(' · ') || 'Открыть профиль';
     return `<div class="prow cut" data-action="pprofile" data-pid="${p.id}"${p.lft ? ' data-lft="1"' : ''} data-search="${esc((p.name + ' ' + (p.nick || '')).toLowerCase())}" data-tip="${esc(tip)}">
       ${avatarByName(p.nick || p.name)}
       <div class="pcol"><span class="pnm">${esc(p.name)}${pos}</span>${p.nick ? `<span class="pnk">@${esc(p.nick)}</span>` : ''}</div>
@@ -2367,17 +2403,21 @@ function screenPlayers() {
     </div>`;
   }).join('');
   const lftCount = list.filter(p => p.lft).length;
+  const byPos = regView === 'pos';
   return `<div class="regwrap">
     <div class="reghead">
       <h2>База игроков</h2><span class="regcount">${DB.players.length}</span>
       <span style="flex:1"></span>
-      <button class="btn sm ghost" data-action="lftfilter" data-tip="Показать только тех, кто ищет команду">🔎 LFT${lftCount ? ` (${lftCount})` : ''}</button>
-      <input id="pSearch" class="regsearch" placeholder="Поиск по имени или нику…">
+      <button class="btn sm ghost" data-action="regview" data-tip="Переключить вид">${byPos ? '☰ Списком' : '⛃ По позициям'}</button>
+      ${byPos ? '' : `<button class="btn sm ghost" data-action="lftfilter" data-tip="Показать только тех, кто ищет команду">🔎 LFT${lftCount ? ` (${lftCount})` : ''}</button>
+      <input id="pSearch" class="regsearch" placeholder="Поиск по имени или нику…">`}
       ${admin ? `<button class="btn primary sm" data-action="pedit" data-tip="Добавить нового игрока">＋ Игрок</button>` : ''}
     </div>
-    ${!admin ? `<div class="regnote">👁 Режим просмотра. Добавляет и меняет игроков администратор — <b data-action="adminlogin" style="cursor:pointer;color:var(--gold2)">войти</b>.</div>` : ''}
-    ${list.length ? `<div class="reglist">${rows}</div>`
-      : `<div class="empty"><span class="big">🧩</span>${admin ? 'База пустая — добавь игроков кнопкой <b>«＋ Игрок»</b>.' : 'В базе пока никого.'}</div>`}
+    ${!admin && !isPlayer() ? `<div class="regnote">👁 Режим просмотра. Добавляет и меняет игроков администратор — <b data-action="adminlogin" style="cursor:pointer;color:var(--gold2)">войти</b>.</div>` : ''}
+    ${!list.length
+      ? `<div class="empty"><span class="big">🧩</span>${admin ? 'База пустая — добавь игроков кнопкой <b>«＋ Игрок»</b>.' : 'В базе пока никого.'}</div>`
+      : byPos ? `<div class="posrows">${posRowsHtml(list)}</div>`
+      : `<div class="reglist">${rows}</div>`}
   </div>`;
 }
 function playerEditModal(pid) {
@@ -2392,11 +2432,10 @@ function playerEditModal(pid) {
       <input id="peNick" placeholder="azek" value="${existing && existing.nick ? esc(existing.nick) : ''}">
       <label class="flbl">Текущий MMR</label>
       <input id="peMmr" type="number" inputmode="numeric" placeholder="6200" value="${existing && existing.mmr != null ? existing.mmr : ''}">
-      <label class="flbl">Позиция</label>
-      <select id="pePos">
-        <option value="">— не указана —</option>
-        ${['1', '2', '3', '4', '5'].map(n => `<option value="${n}" ${existing && existing.pos === n ? 'selected' : ''}>${POS_LABELS[n]}</option>`).join('')}
-      </select>
+      <label class="flbl">Позиции <span class="note">(можно несколько)</span></label>
+      <div class="posgrid">
+        ${['1', '2', '3', '4', '5'].map(n => `<label class="poschk"><input type="checkbox" class="pePos" value="${n}" ${posArr(existing).includes(n) ? 'checked' : ''}>${POS_LABELS[n]}</label>`).join('')}
+      </div>
       <label class="flbl">Телефон <span class="note">(для связи в WhatsApp)</span></label>
       <input id="pePhone" inputmode="tel" placeholder="+7 700 000 00 00" value="${existing && existing.phone ? esc(existing.phone) : ''}">
       <label class="flbl">Заметка <span class="note">(необязательно)</span></label>
@@ -2452,7 +2491,7 @@ function playerEditModal(pid) {
       nick: ov.querySelector('#peNick').value.trim(),
       mmr: mmrRaw === '' ? null : parseInt(mmrRaw, 10),
       phone: ov.querySelector('#pePhone').value.trim(),
-      pos: ov.querySelector('#pePos').value,
+      pos: [...ov.querySelectorAll('.pePos:checked')].map(c => c.value).join(','),
       note: ov.querySelector('#peNote').value.trim(),
       mmrHistory: hist.slice().sort((a, b) => b.v - a.v),
       account: existing ? existing.account : null
@@ -2562,7 +2601,7 @@ function screenProfile(pid) {
         <h2>${esc(p.name)}</h2>
         <div class="profsub">
           ${p.nick ? `<span class="pnk">@${esc(p.nick)}</span>` : ''}
-          ${p.pos ? `<span class="posbadge">${esc(posLabel(p.pos))}</span>` : ''}
+          ${posArr(p).length ? `<span class="posset">${posBadges(p)}</span>` : ''}
           ${p.lft ? `<span class="lftbadge" data-tip="${esc(p.lftNote || 'Ищет команду')}">🔎 LFT</span>` : ''}
         </div>
       </div>
@@ -2572,10 +2611,11 @@ function screenProfile(pid) {
         ${isPlayer() && myId() === p.id ? `<button class="btn sm ${p.lft ? 'primary' : ''}" data-action="lfttoggle" data-pid="${p.id}">${p.lft ? '✓ Ищу команду' : '🔎 Искать команду'}</button>` : ''}
         ${admin ? `<button class="btn sm ghost" data-action="managelogin" data-pid="${p.id}" data-tip="Включить/сменить вход игроку">🔑 Вход игрока</button>` : ''}
         ${admin ? `<button class="btn sm ghost" data-action="pedit" data-pid="${p.id}">✎ Изменить</button>` : ''}
+        ${isPlayer() && myId() === p.id ? `<button class="btn sm ghost" data-action="logout">Выйти</button>` : ''}
       </div>
     </div>
-    ${p.lft ? `<div class="profnote cut" style="--bl:rgba(45,212,191,.5)">🔎 Ищет команду${p.lftNote ? ': ' + esc(p.lftNote) : ''}</div>` : ''}
-    ${p.note ? `<div class="profnote cut">📝 ${esc(p.note)}</div>` : ''}
+    ${p.lft ? `<div class="profnote cut" style="--bl:rgba(45,212,191,.5)"><span>🔎 Ищет команду${p.lftNote ? ': ' + esc(p.lftNote) : ''}</span></div>` : ''}
+    ${p.note ? `<div class="profnote cut"><span>📝 ${esc(p.note)}</span></div>` : ''}
     <div class="profgrid">
       <div class="pcard cut"><b>${s.tours}</b><span>турниров</span></div>
       <div class="pcard cut"><b>${s.w}–${s.l}</b><span>матчи В–П</span></div>
@@ -3056,6 +3096,11 @@ document.addEventListener('click', async e => {
   else if (a === 'lftfilter') {
     const list = document.querySelector('.reglist'); if (!list) return;
     el.classList.toggle('primary', list.classList.toggle('lftonly'));
+  }
+  else if (a === 'regview') { regView = regView === 'pos' ? 'list' : 'pos'; render(); }
+  else if (a === 'myprofile') { if (isPlayer()) { view = { screen: 'profile', pid: myId(), tid: null }; render(); } }
+  else if (a === 'logout') {
+    if (isPlayer()) { rcPlayer = null; localStorage.removeItem('rc_player'); toast('Вышел', '🔒'); view = { screen: 'players', tid: null }; render(); regLoad(); }
   }
   else if (a === 'pprofile') { view = { screen: 'profile', pid: el.dataset.pid, tid: null }; render(); }
   else if (a === 'wa') { const ph = (el.dataset.phone || '').replace(/[^\d]/g, ''); if (ph) window.open('https://wa.me/' + ph, '_blank', 'noopener'); }
