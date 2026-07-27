@@ -479,16 +479,18 @@ canvas.confetti{position:fixed;inset:0;z-index:100;pointer-events:none}
 .posgrid{display:flex;flex-wrap:wrap;gap:8px}
 .poschk{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);background:var(--panel2);border:1px solid var(--line2);padding:6px 10px;cursor:pointer}
 .poschk input{accent-color:var(--gold);width:15px;height:15px}
-.posrows{display:flex;flex-direction:column;gap:12px;margin-top:4px}
-.posrow{--c:12px;--bl:var(--line);padding:12px 15px}
-.posrowhead{display:flex;align-items:center;gap:9px;font-family:var(--disp);font-size:12px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--gold2);margin-bottom:10px}
-.posrown{display:inline-grid;place-items:center;width:22px;height:22px;background:var(--gold-soft);border:1px solid var(--gold-deep);color:var(--gold2);font-size:12px}
+.regwrap.regwide{max-width:1760px}
+.posrows{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:14px;margin-top:4px;align-items:start}
+.posrow{--c:12px;--bl:var(--line);padding:12px 13px;display:flex;flex-direction:column}
+.posrowhead{display:flex;align-items:center;gap:9px;font-family:var(--disp);font-size:11.5px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--gold2);margin-bottom:11px;padding-bottom:9px;border-bottom:1px solid var(--line)}
+.posrown{display:inline-grid;place-items:center;width:22px;height:22px;background:var(--gold-soft);border:1px solid var(--gold-deep);color:var(--gold2);font-size:12px;flex-shrink:0}
 .poscount{margin-left:auto;font-size:10px;font-weight:700;color:var(--dim);background:var(--panel2);border:1px solid var(--line);padding:1px 8px}
-.posrowlist{display:flex;flex-wrap:wrap;gap:8px}
-.poschip{--c:8px;--bl:var(--line2);display:inline-flex;align-items:center;gap:8px;padding:6px 12px 6px 7px;cursor:pointer;transition:transform .12s}
-.poschip:hover{transform:translateY(-1px);--bl:var(--gold-deep)}
-.poschip .pcn{font-weight:600;font-size:13px}
-.poschip .pcm{font-family:var(--disp);font-weight:700;font-size:12px;color:var(--gold2);font-variant-numeric:tabular-nums}
+.posrowlist{display:flex;flex-direction:column;gap:6px}
+.poschip{--c:8px;--bl:var(--line2);display:flex;align-items:center;gap:8px;width:100%;padding:7px 12px 7px 7px;cursor:pointer;transition:transform .12s;text-align:left}
+.poschip:hover{transform:translateX(2px);--bl:var(--gold-deep)}
+.poschip .pcn{font-weight:600;font-size:13px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.poschip .pclft{font-size:11px;flex-shrink:0}
+.poschip .pcm{margin-left:auto;font-family:var(--disp);font-weight:700;font-size:13px;color:var(--gold2);font-variant-numeric:tabular-nums;flex-shrink:0}
 .poschip.multi{--bl:linear-gradient(135deg,var(--teal),var(--gold-deep))}
 .poschip.multi .pcn{color:var(--teal)}
 /* страница профиля */
@@ -2404,7 +2406,7 @@ function screenPlayers() {
   }).join('');
   const lftCount = list.filter(p => p.lft).length;
   const byPos = regView === 'pos';
-  return `<div class="regwrap">
+  return `<div class="regwrap${byPos ? ' regwide' : ''}">
     <div class="reghead">
       <h2>База игроков</h2><span class="regcount">${DB.players.length}</span>
       <span style="flex:1"></span>
