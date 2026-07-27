@@ -725,10 +725,21 @@ function resolveByes(t) {
     }
   }
 }
-function winsNeeded(t) { return Math.ceil((t.opts.bestOf || 1) / 2); }
+// Best-of зависит от стадии матча: группа / плей-офф / финал.
+// Старые турниры используют opts.bestOf как запасной вариант.
+function stageBestOf(t, m) {
+  const o = t.opts, b = o.bestOf || 1;
+  if (m.bracket && m.bracket.startsWith('g:')) return o.boGroup || b;
+  const isFinal = t.format === 'double'
+    ? (m.id === t.gfId || m.id === t.gf2Id)
+    : (m.id === t.finalId);
+  if (isFinal) return o.boFinal || o.boPlayoff || b;
+  return o.boPlayoff || b;
+}
+function winsNeededM(t, m) { return Math.ceil(stageBestOf(t, m) / 2); }
 function setWinner(t, m, si) {
   if (m.winner || !isReady(m)) return;
-  const need = winsNeeded(t);
+  const need = winsNeededM(t, m);
   let ws = m.slots[si].score == null ? null : m.slots[si].score;
   let os = m.slots[1 - si].score == null ? null : m.slots[1 - si].score;
   if (need > 1) {
@@ -1146,16 +1157,6 @@ function showPlayerStats(name) {
   </div>`);
   ov.querySelector('#mOk').onclick = () => closeModal(ov);
   ov.onclick = e => { if (e.target === ov) closeModal(ov); };
-}
-
-function joinMsg() {
-  const ov = openModal(`
-    <div class="mtitle">Залетай к нам</div>
-    <div class="mbody">Мы пока не проводим ни одного турнира.</div>
-    <div class="mrow"><button class="btn primary" id="mOk">Понятно</button></div>`);
-  ov.querySelector('#mOk').onclick = () => closeModal(ov);
-  ov.onclick = e => { if (e.target === ov) closeModal(ov); };
-  ov.querySelector('#mOk').focus();
 }
 
 /* ================= actions ================= */
@@ -1809,7 +1810,8 @@ function matchHtml(t, m, champ) {
     ? `<button class="mini" data-tip="Отменить результат (откатит и всё дальше)" data-action="undo" data-mid="${m.id}">↺</button>` : '';
   const status = ready ? `<span class="livedot"></span><span class="livetag">live</span>`
     : (m.winner && !m.auto ? `<span class="donetick">✔</span>` : '');
-  const bo = (t.opts.bestOf || 1) > 1 ? `<span style="color:var(--gold-deep)">BO${t.opts.bestOf}</span>` : '';
+  const mbo = stageBestOf(t, m);
+  const bo = mbo > 1 ? `<span style="color:var(--gold-deep)" data-tip="До ${winsNeededM(t, m)} побед">BO${mbo}</span>` : '';
   return `<div class="match cut ${cls}" id="m_${m.id}" data-mid="${m.id}">
     <div class="mhead">${status}<span>${esc(m.label || '')}</span><span class="sp"></span>${bo}${undo}</div>
     ${slotHtml(t, m, 0)}${slotHtml(t, m, 1)}
@@ -1892,7 +1894,6 @@ function renderTopbar() {
     mid = `<span class="tname">${esc(t.name)}</span>
       ${canEdit(t) ? `<button class="mini" data-tip="Переименовать турнир" data-action="trename">✎</button>` : ''}
       <span class="badge">${FMT_ICO[t.format]} ${FMT_LABEL[t.format]}</span>
-      ${(t.opts.bestOf || 1) > 1 ? `<span class="badge" data-tip="Матчи до ${winsNeeded(t)} побед">BO${t.opts.bestOf}</span>` : ''}
       <span class="prog ${pr.pct === 100 ? 'full' : ''}" data-tip="Сыграно матчей: ${pr.played} из ${pr.total}">
         <span class="bar"><i style="width:${pr.pct}%"></i></span>${pr.pct}%</span>`;
   }
@@ -2054,11 +2055,9 @@ function screenHome() {
     </div>` : '';
   return `<div class="hero">
       ${SKYLINE}
-      <div class="eyebrow">Жаркент · Zharkent 🇰🇿</div>
+      <div class="eyebrow">Zharkent 🇰🇿</div>
       <h1>Random Cup</h1>
-      <div class="rule"><span>Турнирный менеджер</span></div>
       <div class="byline">локальные турниры · by <b>EXZANTE</b></div>
-      <span class="dlink" data-action="join" style="cursor:pointer" data-tip="Скоро">💬 Залетай к нам</span>
     </div>
     ${DB.tournaments.length ? `<div class="statrow">
       <div class="stat cut"><b>${DB.tournaments.length}</b><span>турниров</span></div>
@@ -2069,8 +2068,6 @@ function screenHome() {
     ${cards ? `<div class="tlist">${cards}</div>`
       : `<div class="empty"><span class="big">🏟️</span>Пока пусто. Жми <b>«+ Новый турнир»</b> сверху — займёт полминуты.</div>`}
     <div class="homefoot">
-      <span class="dlink" data-action="join" style="cursor:pointer" data-tip="Скоро">💬 залетай к нам</span>
-      <span class="dot">·</span>
       <span>made by EXZANTE</span>
     </div>`;
 }
@@ -2101,18 +2098,30 @@ function screenCreate() {
     </div>
     <div class="frow">
       <label class="lbl" for="cPlayers">Участники — по одному на строку. Команда: «Название: игрок1, игрок2»</label>
-      <textarea id="cPlayers" rows="8" placeholder="Иван&#10;Пётр&#10;Азамат&#10;Дикие Псы: Вася, Петя&#10;..."></textarea>
+      <textarea id="cPlayers" rows="8" placeholder="Азамат&#10;Данияр&#10;Тигры: Ерлан, Санжар&#10;Кочевники: Арман, Бекзат&#10;..."></textarea>
       <div style="display:flex;align-items:center;gap:12px;margin-top:8px">
         <div class="pcount" id="pCount" style="margin:0;flex:1"></div>
         <button type="button" class="btn sm ghost" data-action="shufflecreate" data-tip="Случайный порядок — случайный посев">🎲 Перемешать</button>
       </div>
     </div>
-    <div class="frow inline">
-      <label class="chk" data-tip="До скольких побед идёт каждый матч">Формат матча:&nbsp;<select id="cBestOf">
+    <div class="frow inline" id="optBO">
+      <label class="chk hidden" id="boGroupWrap" data-tip="До скольких побед идёт матч в группе / лиге"><span id="boGroupLbl">Группа</span>:&nbsp;<select id="cBoGroup">
         <option value="1">1 игра</option>
-        <option value="3">BO3 — до 2 побед</option>
-        <option value="5">BO5 — до 3 побед</option>
-        <option value="7">BO7 — до 4 побед</option>
+        <option value="3">BO3</option>
+        <option value="5">BO5</option>
+        <option value="7">BO7</option>
+      </select></label>
+      <label class="chk" id="boPoWrap" data-tip="До скольких побед идут матчи плей-офф">Плей-офф:&nbsp;<select id="cBoPo">
+        <option value="1">1 игра</option>
+        <option value="3">BO3</option>
+        <option value="5">BO5</option>
+        <option value="7">BO7</option>
+      </select></label>
+      <label class="chk" id="boFinalWrap" data-tip="До скольких побед идёт финал">Финал:&nbsp;<select id="cBoFinal">
+        <option value="1">1 игра</option>
+        <option value="3">BO3</option>
+        <option value="5">BO5</option>
+        <option value="7">BO7</option>
       </select></label>
     </div>
     <div class="frow inline" id="optThird">
@@ -2455,7 +2464,6 @@ document.addEventListener('click', async e => {
     updateTimerUI();
   }
   else if (a === 'pstats') showPlayerStats(el.dataset.name);
-  else if (a === 'join') joinMsg();
   else if (a === 'share') { if (t) shareFlow(t); }
   else if (a === 'mute') {
     soundOn = !soundOn;
@@ -2491,7 +2499,7 @@ document.addEventListener('click', async e => {
     const m = t.matches[el.dataset.mid], si = +el.dataset.si;
     if (!m.slots[si].pid || m.slots[si].pid === 'BYE' || m.auto || m.winner) return;
     m.slots[si].score = (m.slots[si].score || 0) + 1;
-    const need = winsNeeded(t);
+    const need = winsNeededM(t, m);
     if (need > 1 && isReady(m) && m.slots[si].score >= need) {
       m.winner = m.slots[si].pid;
       propagate(t, m);
@@ -2594,6 +2602,11 @@ document.addEventListener('change', e => {
     const v = document.querySelector('input[name=fmt]:checked').value;
     document.getElementById('optThird').classList.toggle('hidden', v === 'double' || v === 'rr');
     document.getElementById('optGroups').classList.toggle('hidden', v !== 'groups');
+    // Селекты best-of по стадиям: группа — для групп/лиги, плей-офф и финал — для сеток.
+    document.getElementById('boGroupWrap').classList.toggle('hidden', v !== 'groups' && v !== 'rr');
+    document.getElementById('boPoWrap').classList.toggle('hidden', v === 'rr');
+    document.getElementById('boFinalWrap').classList.toggle('hidden', v === 'rr');
+    document.getElementById('boGroupLbl').textContent = v === 'rr' ? 'Матчи' : 'Группа';
     updatePCount();
   }
 });
@@ -2658,7 +2671,9 @@ document.addEventListener('submit', e => {
   const opts = {
     thirdPlace: document.getElementById('cThird').checked,
     groupCount: +document.getElementById('cGroups').value,
-    bestOf: +document.getElementById('cBestOf').value,
+    boGroup: +document.getElementById('cBoGroup').value,
+    boPlayoff: +document.getElementById('cBoPo').value,
+    boFinal: +document.getElementById('cBoFinal').value,
     advance: 2
   };
   createTournament(name, fmt, names, opts);
