@@ -2333,6 +2333,7 @@ function renderTopbar() {
     : '';
   const addBtn = t
     ? `${shareBtn}
+       ${editor ? `<button class="btn sm ghost" data-action="editinfo" data-tip="Инфо и правила турнира: дата, место, лимит MMR. Видно всем и по ссылке">ℹ️ Инфо</button>` : ''}
        <button class="btn sm ${rosterOpen ? 'primary' : 'ghost'}" data-action="roster" data-tip="Состав турнира">👥 ${Object.keys(t.players).length}</button>
        ${editor ? `<button class="btn sm ghost" data-action="addp" data-tip="Добавить участника: сядет на свободное место или расширит сетку">+ Игрок</button>` : ''}
        ${canReseed ? `<button class="btn sm icon ghost" data-action="reseed" data-tip="Перемешать посев заново">🎲</button>` : ''}
