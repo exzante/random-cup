@@ -2935,14 +2935,7 @@ function screenHome() {
         <span class="hofmed">${r.g ? `🥇×${r.g}` : ''} ${r.s ? `🥈×${r.s}` : ''} ${r.b ? `🥉×${r.b}` : ''}</span>
       </div>`).join('')}
     </div>` : '';
-  const onboard = !localStorage.getItem('rc_onboard') ? `<div class="coach cut onboard">
-      <span class="ic">👋</span>
-      <span class="tx"><b>Это Random Cup — турниры и комьюнити Жаркента.</b><br>
-        <b>🎮 Лобби</b> — собрать катку и подать заявку · <b>👥 Игроки</b> — база: MMR, позиции, кто ищет команду · <b>+ Новый турнир</b> — сетки и группы.<br>
-        Организатор входит по паролю (<b>🔒 Войти</b>) и ведёт базу; игрокам вход выдаёт он.</span>
-      <button class="btn sm" data-action="onboardoff">Понятно</button>
-    </div>` : '';
-  return `${onboard}<div class="hero">
+  return `<div class="hero">
       ${SKYLINE}
       <div class="eyebrow">Zharkent 🇰🇿</div>
       <h1>Random Cup</h1>
@@ -3396,7 +3389,6 @@ document.addEventListener('click', async e => {
   else if (a === 'new') { view = { screen: 'create', tid: null }; render(); regLoad(); }
   else if (a === 'help') showHelp();
   else if (a === 'coachoff') { localStorage.setItem('turnir_coach2', '1'); render(); }
-  else if (a === 'onboardoff') { localStorage.setItem('rc_onboard', '1'); render(); }
   else if (a === 'editinfo') { infoEditModal(); }
   else if (a === 'open') { view = { screen: 'tour', tid: el.dataset.tid }; render(); }
   else if (a === 'del') {
