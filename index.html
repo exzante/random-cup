@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Dubai Project</title>
+<title>Random Cup</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏆</text></svg>">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600;700&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -142,7 +142,6 @@ textarea{resize:vertical;line-height:1.8}
 .homefoot a{color:var(--muted);text-decoration:none}
 .homefoot a:hover{color:var(--gold2)}
 .homefoot .dot{color:var(--line2)}
-.homefoot .flower{color:#C9A84C}
 .statrow{display:flex;justify-content:center;gap:14px;margin:8px 0 6px;flex-wrap:wrap}
 .stat{--c:10px;--bl:var(--line);display:flex;flex-direction:column;align-items:center;gap:1px;padding:12px 30px}
 .stat b{font-family:var(--disp);font-weight:600;font-size:22px;color:var(--gold2)}
@@ -1138,21 +1137,6 @@ function showPlayerStats(name) {
   ov.onclick = e => { if (e.target === ov) closeModal(ov); };
 }
 
-/* ================= пасхалка Flower 🌻 ================= */
-const FLOWER_JOKES = [
-  'Flower опять застрял в Bronze',
-  'ставка дня: Flower вылетает первым',
-  'Flower топит за Dubai... и за слив',
-  'кто звал Flower? лёгкая жертва сетки',
-  'Flower снова перепутал кнопки',
-  'free Flower — он не виноват, что криворукий',
-  'Flower: 0 побед, 100% харизмы'
-];
-function isFlower(nm) { return /flow?er|фл[оа]уэр|флавер/i.test(nm || ''); }
-function flowerJoke() {
-  const j = FLOWER_JOKES[Math.floor(Math.random() * FLOWER_JOKES.length)];
-  toast(j, '🌻', true);
-}
 function joinMsg() {
   const ov = openModal(`
     <div class="mtitle">Залетай к нам</div>
@@ -1194,8 +1178,6 @@ function createTournament(name, format, names, opts) {
   view = { screen: 'tour', tid: t.id };
   render();
   toast('Турнир создан — удачи!', '🏆', true);
-  if (Object.values(t.players).some(p => isFlower(p.name)))
-    setTimeout(() => toast('🌻 О, Flower в составе — принимаем ставки, на каком раунде вылетит', '🌻', true), 1100);
 }
 function doSwap(t, aSel, bSel) {
   const ma = t.matches[aSel.mid], mb = t.matches[bSel.mid];
@@ -1921,7 +1903,7 @@ function renderTopbar() {
   document.getElementById('topbar').innerHTML = `<div class="tbin">
     <button class="brand" data-action="home" data-tip="На главную">
       <span class="cup">DP</span>
-      <span class="bt">Dubai Project<small>cup manager</small></span>
+      <span class="bt">Random Cup<small>Zharkent · cup manager</small></span>
     </button>
     ${mid}
     <span class="spacer"></span>
@@ -2061,10 +2043,10 @@ function screenHome() {
     </div>` : '';
   return `<div class="hero">
       ${SKYLINE}
-      <div class="eyebrow">Dubai представляет</div>
-      <h1>Dubai Project</h1>
+      <div class="eyebrow">Жаркент · Zharkent 🇰🇿</div>
+      <h1>Random Cup</h1>
       <div class="rule"><span>Турнирный менеджер</span></div>
-      <div class="byline">by <b>EXZANTE</b></div>
+      <div class="byline">локальные турниры · by <b>EXZANTE</b></div>
       <span class="dlink" data-action="join" style="cursor:pointer" data-tip="Скоро">💬 Залетай к нам</span>
     </div>
     ${DB.tournaments.length ? `<div class="statrow">
@@ -2079,8 +2061,6 @@ function screenHome() {
       <span class="dlink" data-action="join" style="cursor:pointer" data-tip="Скоро">💬 залетай к нам</span>
       <span class="dot">·</span>
       <span>made by EXZANTE</span>
-      <span class="dot">·</span>
-      <span class="flower" data-action="flower" style="cursor:pointer" data-tip="🌻">🌻 Flower was here</span>
     </div>`;
 }
 
@@ -2110,7 +2090,7 @@ function screenCreate() {
     </div>
     <div class="frow">
       <label class="lbl" for="cPlayers">Участники — по одному на строку. Команда: «Название: игрок1, игрок2»</label>
-      <textarea id="cPlayers" rows="8" placeholder="Иван&#10;Пётр&#10;Flower&#10;Дикие Псы: Вася, Петя&#10;..."></textarea>
+      <textarea id="cPlayers" rows="8" placeholder="Иван&#10;Пётр&#10;Азамат&#10;Дикие Псы: Вася, Петя&#10;..."></textarea>
       <div style="display:flex;align-items:center;gap:12px;margin-top:8px">
         <div class="pcount" id="pCount" style="margin:0;flex:1"></div>
         <button type="button" class="btn sm ghost" data-action="shufflecreate" data-tip="Случайный порядок — случайный посев">🎲 Перемешать</button>
@@ -2464,7 +2444,6 @@ document.addEventListener('click', async e => {
     updateTimerUI();
   }
   else if (a === 'pstats') showPlayerStats(el.dataset.name);
-  else if (a === 'flower') flowerJoke();
   else if (a === 'join') joinMsg();
   else if (a === 'share') { if (t) shareFlow(t); }
   else if (a === 'mute') {
@@ -2696,7 +2675,7 @@ document.getElementById('importFile').addEventListener('change', e => {
       view = { screen: 'home', tid: null };
       render();
       toast('Данные загружены', '📂');
-    } catch (err) { uiAlert('Не получилось прочитать файл — это не экспорт Dubai Project.'); }
+    } catch (err) { uiAlert('Не получилось прочитать файл — это не экспорт Random Cup.'); }
   };
   fr.readAsText(f);
   e.target.value = '';
