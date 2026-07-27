@@ -207,8 +207,12 @@ textarea{resize:vertical;line-height:1.8}
 .caprow .cs{font-family:var(--disp);font-weight:700;color:var(--gold2);font-variant-numeric:tabular-nums}
 .caprow.over .cs{color:var(--red)}
 .caprow .cok{color:var(--green)}
-.caprow .cbad{font-size:10px;font-weight:700;color:var(--red);text-transform:uppercase;letter-spacing:.05em}
+.caprow .cbad{font-size:11px;font-weight:800;color:var(--red);font-variant-numeric:tabular-nums}
+.caprow .crem{font-size:11px;font-weight:700;color:var(--green);font-variant-numeric:tabular-nums}
+.caprow .cn small{color:var(--dim);font-weight:400}
 .caprow .cmiss{font-size:10.5px;color:var(--muted);border:1px dashed var(--line2);padding:1px 7px}
+.caprow .mini{margin-left:auto;color:var(--gold2);font-size:11px;white-space:nowrap}
+b.over-t{color:var(--red)}
 .chk{display:inline-flex;align-items:center;gap:9px;cursor:pointer;user-select:none;font-weight:500}
 .chk input[type=checkbox]{accent-color:var(--gold);width:17px;height:17px;cursor:pointer}
 .inline{display:flex;gap:20px;align-items:center;flex-wrap:wrap}
@@ -217,6 +221,8 @@ textarea{resize:vertical;line-height:1.8}
 .tourinfo{--c:12px;--bl:linear-gradient(135deg,var(--gold2),var(--gold-deep));margin:6px 0 4px;padding:13px 18px}
 .tourinfo-row{display:flex;flex-wrap:wrap;gap:16px;font-size:13px;color:var(--gold2);font-weight:600}
 .tourinfo-rules{margin-top:9px;font-size:12.5px;color:var(--muted);line-height:1.5;white-space:pre-wrap}
+.tourinfo.empty2{--bl:var(--line2);display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.tourinfo.empty2 .note{flex:1;min-width:180px}
 .hidden{display:none !important}
 
 /* ================= bracket ================= */
@@ -506,6 +512,8 @@ canvas.confetti{position:fixed;inset:0;z-index:100;pointer-events:none}
 .pmmrhist b{color:var(--gold2);font-variant-numeric:tabular-nums}
 .posmini{display:inline-grid;place-items:center;width:16px;height:16px;margin-left:7px;font-size:10px;font-weight:800;color:var(--gold2);background:var(--gold-soft);border:1px solid var(--gold-deep);border-radius:4px;vertical-align:middle}
 .posbadge{font-size:11px;font-weight:600;color:var(--gold2);background:var(--gold-soft);border:1px solid var(--gold-deep);padding:2px 9px}
+.poschipL{font-size:11px;font-weight:600;color:var(--gold2);background:var(--gold-soft);border:1px solid var(--gold-deep);padding:2px 9px}
+.posset{display:inline-flex;gap:5px;flex-wrap:wrap}
 .lftbadge{font-size:10px;font-weight:700;letter-spacing:.05em;color:var(--teal);background:var(--teal-soft);border:1px solid rgba(45,212,191,.5);padding:2px 8px;white-space:nowrap;flex-shrink:0}
 .reglist.lftonly .prow:not([data-lft]){display:none}
 .creds{display:flex;align-items:center;gap:12px;padding:9px 13px;background:var(--panel2);border:1px solid var(--line);margin-top:8px}
@@ -1598,8 +1606,10 @@ function playerToPayload(p) {
 }
 const POS_LABELS = { '1': 'Керри (1)', '2': 'Мид (2)', '3': 'Оффлейн (3)', '4': 'Саппорт (4)', '5': 'Хард саппорт (5)' };
 function posLabel(pos) { return POS_LABELS[pos] || ''; }
+const POS_SHORT = { '1': 'Керри', '2': 'Мид', '3': 'Оффлейн', '4': 'Саппорт', '5': 'Хард сап' };
 function posArr(p) { return (p && p.pos ? String(p.pos) : '').split(',').map(s => s.trim()).filter(Boolean); }
 function posBadges(p) { return posArr(p).map(n => `<span class="posbadge" data-tip="${esc(posLabel(n))}">${n}</span>`).join(''); }
+function posChips(p) { return posArr(p).map(n => `<span class="poschipL" data-tip="Позиция ${n}">${esc(POS_SHORT[n] || n)}</span>`).join(''); }
 let regSyncing = false;
 async function regLoad() {
   regSyncing = true; if (view.screen === 'players') renderTopbar();
@@ -2701,7 +2711,7 @@ function screenProfile(pid) {
         <h2>${esc(p.name)}</h2>
         <div class="profsub">
           ${p.nick ? `<span class="pnk">@${esc(p.nick)}</span>` : ''}
-          ${posArr(p).length ? `<span class="posset">${posBadges(p)}</span>` : ''}
+          ${posArr(p).length ? `<span class="posset">${posChips(p)}</span>` : '<span class="note">позиции не указаны</span>'}
           ${p.lft ? `<span class="lftbadge" data-tip="${esc(p.lftNote || 'Ищет команду')}">🔎 LFT</span>` : ''}
         </div>
       </div>
@@ -3066,15 +3076,39 @@ function podiumHtml(t) {
 
 function tourInfoHtml(t) {
   const i = (t.opts && t.opts.info) || {};
+  const ed = canEdit(t);
   const bits = [];
   if (i.when) bits.push(`<span>📅 ${esc(i.when)}</span>`);
   if (i.venue) bits.push(`<span>📍 ${esc(i.venue)}</span>`);
   if (t.opts && t.opts.mmrCap) bits.push(`<span>🎚 лимит ${t.opts.mmrCap} MMR</span>`);
-  if (!bits.length && !i.rules) return '';
+  const has = bits.length || i.rules;
+  if (!has) return ed
+    ? `<div class="tourinfo cut empty2"><span class="note">Добавь инфо для участников — дата, место, лимит, правила. Она видна всем и по ссылке.</span><button class="btn sm ghost" data-action="editinfo">＋ Инфо</button></div>`
+    : '';
   return `<div class="tourinfo cut">
-    ${bits.length ? `<div class="tourinfo-row">${bits.join('')}</div>` : ''}
+    <div class="tourinfo-row">${bits.join('')}<span style="flex:1"></span>${ed ? `<button class="mini" data-action="editinfo" data-tip="Редактировать инфо">✎</button>` : ''}</div>
     ${i.rules ? `<div class="tourinfo-rules">${esc(i.rules)}</div>` : ''}
   </div>`;
+}
+function infoEditModal() {
+  const t = curT(); if (!t || !canEdit(t)) return;
+  const i = t.opts.info || {};
+  const ov = openModal(`
+    <div class="mtitle">Инфо турнира</div>
+    <div class="mbody" style="text-align:left;display:flex;flex-direction:column;gap:2px">
+      <label class="flbl">Когда</label><input id="tiWhen" value="${esc(i.when || '')}" placeholder="сб, 20:00">
+      <label class="flbl">Где</label><input id="tiVenue" value="${esc(i.venue || '')}" placeholder="Discord / клуб">
+      <label class="flbl">Лимит MMR команды</label><input id="tiCap" type="number" inputmode="numeric" value="${t.opts.mmrCap || ''}" placeholder="без лимита">
+      <label class="flbl">Правила / условия</label><textarea id="tiRules" rows="3" placeholder="формат, лимиты, что можно/нельзя…">${esc(i.rules || '')}</textarea>
+    </div>
+    <div class="mrow"><span style="flex:1"></span><button class="btn ghost" id="tiCancel">Отмена</button><button class="btn primary" id="tiSave">Сохранить</button></div>`);
+  ov.querySelector('#tiCancel').onclick = () => closeModal(ov);
+  ov.onclick = e => { if (e.target === ov) closeModal(ov); };
+  ov.querySelector('#tiSave').onclick = () => {
+    t.opts.info = { when: ov.querySelector('#tiWhen').value.trim(), venue: ov.querySelector('#tiVenue').value.trim(), rules: ov.querySelector('#tiRules').value.trim() };
+    t.opts.mmrCap = parseInt(ov.querySelector('#tiCap').value.trim(), 10) || 0;
+    save(); closeModal(ov); render(); toast('Инфо сохранено', '✓');
+  };
 }
 function screenTour() {
   const t = curT();
@@ -3310,7 +3344,7 @@ function drawEdges() {
 window.addEventListener('resize', () => requestAnimationFrame(drawEdges));
 
 /* ================= events ================= */
-const MUT_ACTIONS = new Set(['win', 'score', 'draw', 'undo', 'rename', 'pdel', 'fill', 'gadd', 'gdel', 'makepo', 'resetpo', 'reseed', 'addp', 'trename', 'raddgo', 'rdel']);
+const MUT_ACTIONS = new Set(['win', 'score', 'draw', 'undo', 'rename', 'pdel', 'fill', 'gadd', 'gdel', 'makepo', 'resetpo', 'reseed', 'addp', 'trename', 'raddgo', 'rdel', 'editinfo']);
 document.addEventListener('click', async e => {
   const el = e.target.closest('[data-action]');
   if (!el || el.disabled) return;
@@ -3325,6 +3359,7 @@ document.addEventListener('click', async e => {
   else if (a === 'help') showHelp();
   else if (a === 'coachoff') { localStorage.setItem('turnir_coach2', '1'); render(); }
   else if (a === 'onboardoff') { localStorage.setItem('rc_onboard', '1'); render(); }
+  else if (a === 'editinfo') { infoEditModal(); }
   else if (a === 'open') { view = { screen: 'tour', tid: el.dataset.tid }; render(); }
   else if (a === 'del') {
     const tt = DB.tournaments.find(x => x.id === el.dataset.tid);
@@ -3417,6 +3452,7 @@ document.addEventListener('click', async e => {
   }
   else if (a === 'regview') { regView = regView === 'pos' ? 'list' : 'pos'; render(); }
   else if (a === 'posfilter') { regPosFilter = el.dataset.val; render(); }
+  else if (a === 'teamfill') { teamFillModal(+el.dataset.line); }
   else if (a === 'pickreg') {
     const ta = document.getElementById('cPlayers'); if (!ta) return;
     const cur = ta.value.replace(/\s+$/, '');
@@ -3623,22 +3659,71 @@ function renderRegPick(q) {
 }
 function updateCapInfo() {
   const box = document.getElementById('capInfo'); if (!box) return;
+  const ta = document.getElementById('cPlayers'); if (!ta) return;
   const capEl = document.getElementById('cCap');
   const cap = capEl ? (parseInt((capEl.value || '').trim(), 10) || 0) : 0;
-  const teams = document.getElementById('cPlayers').value.split('\n').map(s => s.trim()).filter(Boolean)
-    .map(parseEntry).filter(e => e.members && e.members.length);
-  if (!teams.length) { box.innerHTML = ''; return; }
-  box.innerHTML = teams.map(t => {
-    const sum = t.members.reduce((a, m) => a + (regMmrOf(m) || 0), 0);
-    const missing = t.members.filter(m => regMmrOf(m) == null);
-    const over = cap > 0 && sum > cap;
-    return `<div class="caprow ${over ? 'over' : ''}">
-      <span class="cn">${esc(t.name)}</span>
-      <span class="cs">${sum}${cap > 0 ? ` / ${cap}` : ''} MMR</span>
-      ${over ? '<span class="cbad">превышен</span>' : (cap > 0 ? '<span class="cok">✓</span>' : '')}
+  const rows = [];
+  ta.value.split('\n').forEach((raw, idx) => {
+    const s = raw.trim(); if (!s) return;
+    const e = parseEntry(s);
+    if (!(e.members && e.members.length)) return;
+    const sum = e.members.reduce((a, m) => a + (regMmrOf(m) || 0), 0);
+    const missing = e.members.filter(m => regMmrOf(m) == null);
+    const rem = cap - sum, over = cap > 0 && sum > cap;
+    rows.push(`<div class="caprow ${over ? 'over' : ''}">
+      <span class="cn">${esc(e.name)} <small>×${e.members.length}</small></span>
+      <span class="cs">${sum}${cap > 0 ? ` / ${cap}` : ''}</span>
+      ${cap > 0 ? (over ? `<span class="cbad">−${sum - cap}</span>` : `<span class="crem" data-tip="Осталось до лимита">+${rem} свободно</span>`) : ''}
       ${missing.length ? `<span class="cmiss" data-tip="Нет в базе или без MMR: ${esc(missing.join(', '))}">${missing.length} без MMR</span>` : ''}
-    </div>`;
-  }).join('');
+      <button class="mini" data-action="teamfill" data-line="${idx}" data-tip="Добавить игрока, который влезает в лимит">＋ игрок</button>
+    </div>`);
+  });
+  box.innerHTML = rows.join('');
+}
+function teamFillModal(lineIdx) {
+  const ta = document.getElementById('cPlayers'); if (!ta) return;
+  const cap = parseInt((document.getElementById('cCap').value || '').trim(), 10) || 0;
+  const ov = openModal(`
+    <div class="mtitle">Добор в команду</div>
+    <div class="mbody" style="text-align:left">
+      <div class="note" id="tfSum" style="margin-bottom:8px"></div>
+      <input id="tfSearch" placeholder="🔎 Поиск по базе…" autocomplete="off">
+      <div id="tfList" class="laList"></div>
+    </div>
+    <div class="mrow"><span style="flex:1"></span><button class="btn ghost" id="tfClose">Готово</button></div>`, true);
+  const renderList = (q) => {
+    const box = ov.querySelector('#tfList'); if (!box) return;
+    const cur = ta.value.split('\n');
+    const en = parseEntry((cur[lineIdx] || '').trim());
+    if (!en.members) { closeModal(ov); return; }
+    const sum = en.members.reduce((a, m) => a + (regMmrOf(m) || 0), 0);
+    const rem = cap > 0 ? cap - sum : Infinity;
+    const used = new Set();
+    cur.forEach(l => { const e2 = parseEntry(l.trim()); if (e2.members) e2.members.forEach(m => used.add(m.toLowerCase())); else if (e2.name) used.add(e2.name.toLowerCase()); });
+    ov.querySelector('#tfSum').innerHTML = `<b>${esc(en.name)}</b> ×${en.members.length} · сумма <b>${sum}</b>${cap > 0 ? ` · осталось <b class="${rem < 0 ? 'over-t' : ''}">${rem}</b> до ${cap}` : ''}`;
+    q = (q || '').trim().toLowerCase();
+    let players = DB.players.filter(p => !used.has((p.nick || '').toLowerCase()) && !used.has(p.name.toLowerCase()));
+    if (cap > 0) players = players.filter(p => (p.mmr || 0) <= rem);
+    if (q) players = players.filter(p => (p.name + ' ' + (p.nick || '')).toLowerCase().includes(q));
+    players = players.sort((a, b) => (b.mmr || 0) - (a.mmr || 0)).slice(0, 50);
+    box.innerHTML = players.length
+      ? players.map(p => `<button type="button" class="regpickitem tfItem" data-name="${esc(p.name)}">
+          ${avatarByName(p.nick || p.name)}<span class="rpn">${esc(p.name)}${p.nick ? ` <i>@${esc(p.nick)}</i>` : ''}</span>${posArr(p).length ? `<span class="rpp">${posArr(p).join('/')}</span>` : ''}<span class="rpm">${p.mmr != null ? p.mmr : '—'}</span>
+        </button>`).join('')
+      : `<div class="note" style="padding:10px">${cap > 0 ? `Никто не влезает в остаток (${rem}). Убери кого-то или подними лимит.` : 'Никого не найдено.'}</div>`;
+    box.querySelectorAll('.tfItem').forEach(btn => btn.onclick = () => {
+      const c2 = ta.value.split('\n');
+      const e3 = parseEntry((c2[lineIdx] || '').trim());
+      c2[lineIdx] = e3.name + ': ' + (e3.members || []).concat(btn.dataset.name).join(', ');
+      ta.value = c2.join('\n');
+      updatePCount();
+      renderList(ov.querySelector('#tfSearch').value);
+    });
+  };
+  ov.querySelector('#tfSearch').addEventListener('input', e => renderList(e.target.value));
+  ov.querySelector('#tfClose').onclick = () => closeModal(ov);
+  ov.onclick = e => { if (e.target === ov) closeModal(ov); };
+  (DB.players.length ? Promise.resolve() : regLoad()).then(() => renderList(''));
 }
 function updatePCount() {
   updateCapInfo();
