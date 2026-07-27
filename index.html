@@ -303,6 +303,12 @@ table.stand td.num,table.stand th.num{text-align:center;width:34px}
 .grow-tools{display:inline-flex;gap:1px;opacity:0;transition:opacity .12s;margin-left:auto}
 table.stand tr:hover .grow-tools{opacity:1}
 .gmatches{display:flex;flex-direction:column;gap:8px}
+.ground{display:flex;align-items:center;gap:9px;margin:12px 0 3px;font-family:var(--disp);font-size:9.5px;font-weight:600;letter-spacing:.24em;text-transform:uppercase;color:var(--dim)}
+.ground:first-child{margin-top:0}
+.ground::after{content:'';flex:1;height:1px;background:var(--line)}
+.ground.cur{color:var(--gold2)}
+.ground.cur::after{background:linear-gradient(90deg,var(--gold-deep),transparent)}
+.ground .gbye{flex:none;order:3;font-family:var(--body);font-size:10.5px;font-weight:600;letter-spacing:.02em;text-transform:none;color:var(--muted)}
 .gm{--c:8px;--bl:var(--line);--bg2:var(--panel2);display:grid;grid-template-columns:1fr auto auto auto 1fr auto;align-items:center;gap:8px;user-select:none;
   padding:7px 11px;transition:opacity .15s}
 .gm.ready{--bl:linear-gradient(90deg,rgba(61,220,151,.6),var(--line) 70%)}
@@ -311,7 +317,12 @@ table.stand tr:hover .grow-tools{opacity:1}
 .gm .pname.winner{color:var(--gold2);font-weight:800}
 .gm.ready .pname:hover:not(:disabled){color:var(--green)}
 .gm .vs{color:var(--dim);font-size:11px;font-weight:700}
+.gm .vs.draw{cursor:pointer;padding:2px 7px;border:1px solid transparent;font-size:12px;transition:all .12s}
+.gm .vs.draw:hover{color:var(--gold2);background:var(--panel3)}
+.gm .vs.draw.on{color:#161204;background:linear-gradient(135deg,var(--gold2),var(--gold));font-weight:800}
+.gm.draw .pname{color:var(--muted);font-weight:600}
 .gm .score{width:28px}
+table.stand td.pts{color:var(--gold2);font-weight:800}
 .pophdr{--c:12px;--bl:var(--line);display:flex;align-items:center;gap:14px;flex-wrap:wrap;padding:14px 21px;margin-top:18px}
 .pophdr .tl{font-family:var(--disp);font-weight:600;font-size:13px;letter-spacing:.26em;text-transform:uppercase;color:var(--gold2)}
 .note{color:var(--muted);font-size:12.5px}
@@ -724,6 +735,16 @@ function buildDouble(t, pids) {
 
 /* ================= match logic ================= */
 function loserOf(m) { return m.slots[0].pid === m.winner ? m.slots[1].pid : m.slots[0].pid; }
+function matchDone(m) { return !!(m.winner || m.draw); }
+function ptsWin(t) { return t.opts.ptsWin == null ? 3 : t.opts.ptsWin; }
+function ptsDraw(t) { return t.opts.ptsDraw == null ? 1 : t.opts.ptsDraw; }
+function drawsOn(t) { return !!t.opts.draws; }
+function teamPts(t, s) { return s.w * ptsWin(t) + s.d * ptsDraw(t); }
+// Ничью можно поставить только в одиночном матче группы (BO1), где оба места заняты
+function canDraw(t, m) {
+  return drawsOn(t) && m.bracket && m.bracket.startsWith('g:') && stageBestOf(t, m) === 1
+    && m.slots[0].pid && m.slots[1].pid && m.slots[0].pid !== 'BYE' && m.slots[1].pid !== 'BYE';
+}
 function isReady(m) {
   return !m.winner && m.slots[0].pid && m.slots[1].pid && m.slots[0].pid !== 'BYE' && m.slots[1].pid !== 'BYE';
 }
@@ -772,6 +793,7 @@ function setWinner(t, m, si) {
   else { ws = ws || 0; os = os || 0; if (ws <= os) ws = os + 1; }
   m.slots[si].score = ws; m.slots[1 - si].score = os;
   m.winner = m.slots[si].pid;
+  m.draw = false;
   propagate(t, m);
   resolveByes(t);
   sndWin();
@@ -787,7 +809,7 @@ function cascadeUndo(t, m) {
     dm.slots[d.slot].pid = null;
     dm.slots[d.slot].score = null;
   }
-  m.winner = null; m.auto = false;
+  m.winner = null; m.auto = false; m.draw = false;
   m.slots.forEach(s => { s.score = null; });
 }
 
@@ -834,23 +856,77 @@ function grp(t, gid) { return t.groups.find(g => g.id === gid); }
 function groupMatches(t, g) {
   return Object.values(t.matches).filter(m => m.bracket === 'g:' + g.id).sort((a, b) => a.idx - b.idx);
 }
+// Честный посев «змейкой»: 1→A,2→B,3→C, дальше разворот (C,B,A) — чтобы сильные
+// (верх списка) расходились по разным группам, а не собирались в одной.
+function snakeInto(groups, pids) {
+  const G = groups.length;
+  pids.forEach((p, i) => {
+    const col = i % G, row = Math.floor(i / G);
+    groups[row % 2 === 0 ? col : G - 1 - col].pids.push(p);
+  });
+}
+// Круговое расписание (метод «карусели»): раскидывает все пары по турам.
+// При нечётном числе — в каждом туре один игрок отдыхает (bye).
+function rrSchedule(pids) {
+  const arr = pids.slice();
+  if (arr.length % 2) arr.push(null); // null = отдыхающий
+  const n = arr.length, half = n / 2, rounds = [];
+  for (let r = 0; r < n - 1; r++) {
+    const pairs = [];
+    for (let i = 0; i < half; i++) pairs.push([arr[i], arr[n - 1 - i]]);
+    rounds.push(pairs);
+    arr.splice(1, 0, arr.pop()); // фиксируем первого, остальных вращаем
+  }
+  return rounds;
+}
 function genGroupMatches(t, g) {
   for (const m of Object.values(t.matches)) if (m.bracket === 'g:' + g.id) delete t.matches[m.id];
   let n = 0;
-  for (let i = 0; i < g.pids.length; i++)
-    for (let j = i + 1; j < g.pids.length; j++) {
-      const m = mk(t, 'g:' + g.id, 1, n++, '');
-      m.slots[0].pid = g.pids[i];
-      m.slots[1].pid = g.pids[j];
+  rrSchedule(g.pids).forEach((pairs, r) => {
+    for (const [a, b] of pairs) {
+      if (a == null || b == null) continue; // пара с отдыхающим — матча нет
+      const m = mk(t, 'g:' + g.id, r + 1, n++, '');
+      m.slots[0].pid = a;
+      m.slots[1].pid = b;
     }
+  });
 }
-function groupHasResults(t, g) { return groupMatches(t, g).some(m => m.winner); }
+function groupHasResults(t, g) { return groupMatches(t, g).some(matchDone); }
+// Рендер матчей группы, разбитых по турам, с отметкой отдыхающего и подсветкой текущего тура.
+function groupMatchesHtml(t, g, locked) {
+  const gms = groupMatches(t, g);
+  if (!gms.length) return '<span class="note">Меньше двух игроков — матчей нет.</span>';
+  const pending = gms.filter(m => !matchDone(m));
+  const curRound = pending.length ? Math.min(...pending.map(m => m.round)) : 0;
+  const byRound = {};
+  gms.forEach(m => { (byRound[m.round] = byRound[m.round] || []).push(m); });
+  const rounds = Object.keys(byRound).map(Number).sort((a, b) => a - b);
+  const multi = rounds.length > 1;
+  return rounds.map(r => {
+    const ms = byRound[r];
+    const playing = new Set();
+    ms.forEach(m => { playing.add(m.slots[0].pid); playing.add(m.slots[1].pid); });
+    const resting = g.pids.filter(p => !playing.has(p));
+    const restName = resting.length === 1 ? pname(t, resting[0]) : '';
+    const head = multi ? `<div class="ground ${r === curRound ? 'cur' : ''}">
+        <span>Тур ${r}</span>${restName ? `<span class="gbye" data-tip="Отдыхает в этом туре">💤 ${esc(restName)}</span>` : ''}
+      </div>` : '';
+    return head + ms.map(m => gmHtml(t, m, locked)).join('');
+  }).join('');
+}
 function standings(t, g) {
   const st = {};
   const h2h = {}; // h2h[a][b] = сколько раз a обыграл b напрямую
-  g.pids.forEach(p => { st[p] = { pid: p, w: 0, l: 0, sf: 0, sa: 0, h2h: 0 }; h2h[p] = {}; });
+  g.pids.forEach(p => { st[p] = { pid: p, w: 0, d: 0, l: 0, sf: 0, sa: 0, h2h: 0, pts: 0 }; h2h[p] = {}; });
   for (const m of groupMatches(t, g)) {
-    if (!m.winner) continue;
+    if (!matchDone(m)) continue;
+    if (m.draw) {
+      const a = m.slots[0].pid, b = m.slots[1].pid;
+      const as = m.slots[0].score || 0, bs = m.slots[1].score || 0;
+      if (st[a]) { st[a].d++; st[a].sf += as; st[a].sa += bs; }
+      if (st[b]) { st[b].d++; st[b].sf += bs; st[b].sa += as; }
+      continue;
+    }
     const w = m.winner, l = loserOf(m);
     const wi = m.slots[0].pid === w ? 0 : 1;
     const ws = m.slots[wi].score || 0, ls = m.slots[1 - wi].score || 0;
@@ -859,16 +935,18 @@ function standings(t, g) {
     if (h2h[w] && st[l]) h2h[w][l] = (h2h[w][l] || 0) + 1;
   }
   const arr = Object.values(st);
-  // Тай-брейк по личной встрече: среди команд с равным числом побед
-  // считаем победы в очных матчах между ними (мини-таблица).
+  arr.forEach(s => s.pts = teamPts(t, s));
+  // Ключ равенства для тай-брейка: очки (если считаем на очки) или победы.
+  const key = drawsOn(t) ? (s => s.pts) : (s => s.w);
+  // Тай-брейк по личной встрече: среди равных считаем победы в очных матчах (мини-таблица).
   arr.forEach(s => {
-    const tied = arr.filter(o => o.w === s.w).map(o => o.pid);
+    const tied = arr.filter(o => key(o) === key(s)).map(o => o.pid);
     s.h2h = tied.length > 1
       ? tied.reduce((n, o) => o === s.pid ? n : n + (h2h[s.pid][o] || 0), 0)
       : 0;
   });
   return arr.sort((a, b) =>
-    b.w - a.w || b.h2h - a.h2h || (b.sf - b.sa) - (a.sf - a.sa) || b.sf - a.sf ||
+    key(b) - key(a) || b.h2h - a.h2h || (b.sf - b.sa) - (a.sf - a.sa) || b.sf - a.sf ||
     pname(t, a.pid).localeCompare(pname(t, b.pid), 'ru'));
 }
 async function moveBetweenGroups(t, pid, fromGid, toGid) {
@@ -931,7 +1009,7 @@ function podium(t) {
   } else if (t.format === 'rr') {
     const g = t.groups[0];
     const total = groupMatches(t, g).length;
-    const played = groupMatches(t, g).filter(m => m.winner).length;
+    const played = groupMatches(t, g).filter(matchDone).length;
     if (total > 0 && played === total) {
       const s = standings(t, g);
       if (s[0]) out.first = s[0].pid;
@@ -954,7 +1032,7 @@ function progressOf(t) {
     return true;
   });
   const total = ms.length || 1;
-  const played = ms.filter(m => m.winner).length;
+  const played = ms.filter(matchDone).length;
   return { played, total, pct: Math.round(played / total * 100) };
 }
 
@@ -1206,7 +1284,7 @@ function createTournament(name, format, names, opts) {
     const G = Math.min(opts.groupCount, Math.max(1, pids.length));
     t.groups = [];
     for (let i = 0; i < G; i++) t.groups.push({ id: uid(), name: String.fromCharCode(65 + i), pids: [] });
-    pids.forEach((p, i) => t.groups[i % G].pids.push(p));
+    snakeInto(t.groups, pids);
     t.groups.forEach(g => genGroupMatches(t, g));
   }
   DB.tournaments.unshift(t);
@@ -1613,9 +1691,8 @@ async function reseedFlow(t) {
   if (pr.played > 0 && !await uiConfirm('Сыгранные результаты сбросятся, посев будет новый.', { title: 'Перемешать посев?', ok: 'Перемешать', danger: true })) return;
   const pids = shuffleArr(Object.keys(t.players));
   if (t.format === 'groups' || t.format === 'rr') {
-    const G = t.groups.length;
     t.groups.forEach(g => { g.pids = []; });
-    pids.forEach((p, i) => t.groups[i % G].pids.push(p));
+    snakeInto(t.groups, pids);
     t.groups.forEach(g => genGroupMatches(t, g));
   } else {
     rebuildElim(t, pids);
@@ -2047,7 +2124,7 @@ function screenHome() {
   let totalP = 0, totalM = 0;
   DB.tournaments.forEach(t => {
     totalP += Object.keys(t.players).length;
-    totalM += Object.values(t.matches).filter(m => m.winner && !m.auto).length;
+    totalM += Object.values(t.matches).filter(m => matchDone(m) && !m.auto).length;
   });
   const cards = DB.tournaments.map(t => {
     const p = podium(t);
@@ -2155,7 +2232,10 @@ function screenCreate() {
         <option value="1">1 — все со всеми</option>
         <option selected>2</option><option>3</option><option>4</option><option>5</option><option>6</option><option>8</option>
       </select></label>
-      <span class="note">Сколько проходят дальше — выберешь, когда группы доиграют.</span>
+      <span class="note">Проходят дальше — выберешь, когда группы доиграют. Раскидка по группам — «змейкой», чтобы сильные разошлись.</span>
+    </div>
+    <div class="frow inline hidden" id="optDraws">
+      <label class="chk" data-tip="Разрешить ничьи в матчах группы; таблица считается на очки (победа 3, ничья 1, поражение 0)"><input type="checkbox" id="cDraws"> Ничьи и очки <span class="note" style="margin-left:4px">(3 / 1 / 0)</span></label>
     </div>
     <div class="frow" style="margin-top:26px">
       <button type="submit" class="btn primary">Создать турнир 🚀</button>
@@ -2225,10 +2305,11 @@ function screenTour() {
 
 function rrHtml(t, champ) {
   const ro = !canEdit(t);
+  const draws = drawsOn(t);
   const g = t.groups[0];
   const st = standings(t, g);
   const gms = groupMatches(t, g);
-  const gp = gms.filter(m => m.winner).length;
+  const gp = gms.filter(matchDone).length;
   const done = gms.length > 0 && gp === gms.length;
   const medal = ['🥇', '🥈', '🥉'];
   const rows = st.map((s, i) => {
@@ -2240,11 +2321,11 @@ function rrHtml(t, champ) {
     return `<tr class="${done && i === 0 ? 'q' : ''}" data-pid="${s.pid}" data-gid="${g.id}">
       <td class="num">${i + 1}</td>
       <td class="pcell">${avatar(t, s.pid)}<span>${esc(pname(t, s.pid))}</span>${mark}${tools}</td>
-      <td class="num">${s.w}</td><td class="num">${s.l}</td>
-      <td class="num">${s.sf - s.sa > 0 ? '+' : ''}${s.sf - s.sa}</td>
+      <td class="num">${s.w}</td>${draws ? `<td class="num">${s.d}</td>` : ''}<td class="num">${s.l}</td>
+      <td class="num">${s.sf - s.sa > 0 ? '+' : ''}${s.sf - s.sa}</td>${draws ? `<td class="num pts">${s.pts}</td>` : ''}
     </tr>`;
   }).join('');
-  const matches = gms.map(m => gmHtml(t, m, false)).join('');
+  const matches = groupMatchesHtml(t, g, false);
   return `<div class="bseclbl">Каждый с каждым<span class="tag">${gp}/${gms.length} сыграно</span></div>
     <div class="rrwrap">
       <div class="gcard cut" data-gid="${g.id}">
@@ -2252,7 +2333,7 @@ function rrHtml(t, champ) {
           ${ro ? '' : `<button class="mini" data-tip="Добавить игрока" data-action="gadd" data-gid="${g.id}" style="font-size:15px">＋</button>`}
         </div>
         <table class="stand">
-          <tr><th class="num" data-tip="Место. При равных победах решает личная встреча, потом разница счёта">#</th><th>Игрок</th><th class="num" data-tip="Победы">В</th><th class="num" data-tip="Поражения">П</th><th class="num" data-tip="Разница счёта">±</th></tr>
+          <tr><th class="num" data-tip="Место. При равенстве решает личная встреча, потом разница счёта">#</th><th>Игрок</th><th class="num" data-tip="Победы">В</th>${draws ? '<th class="num" data-tip="Ничьи">Н</th>' : ''}<th class="num" data-tip="Поражения">П</th><th class="num" data-tip="Разница счёта">±</th>${draws ? '<th class="num" data-tip="Очки">О</th>' : ''}</tr>
           ${rows}
         </table>
       </div>
@@ -2266,6 +2347,7 @@ function rrHtml(t, champ) {
 function groupsHtml(t, champ) {
   const locked = t.phase === 'po';
   const adv = t.opts.advance || 2;
+  const draws = drawsOn(t);
   let html = `<div class="pophdr cut">
     <span class="tl">Групповой этап</span>`;
   if (!locked) {
@@ -2286,7 +2368,7 @@ function groupsHtml(t, champ) {
   for (const g of t.groups) {
     const st = standings(t, g);
     const gms = groupMatches(t, g);
-    const gp = gms.filter(m => m.winner).length;
+    const gp = gms.filter(matchDone).length;
     const rows = st.map((s, i) => {
       const q = i < adv;
       const tools = !locked
@@ -2298,17 +2380,17 @@ function groupsHtml(t, champ) {
       return `<tr class="${q ? 'q' : ''}" data-pid="${s.pid}" data-gid="${g.id}">
         <td class="num">${i + 1}</td>
         <td class="pcell">${avatar(t, s.pid)}<span>${esc(pname(t, s.pid))}</span>${q ? `<span class="qbadge" data-tip="Проходит в плей-офф при текущей таблице">Q</span>` : ''}${tools}</td>
-        <td class="num">${s.w}</td><td class="num">${s.l}</td>
-        <td class="num">${s.sf - s.sa > 0 ? '+' : ''}${s.sf - s.sa}</td>
+        <td class="num">${s.w}</td>${draws ? `<td class="num">${s.d}</td>` : ''}<td class="num">${s.l}</td>
+        <td class="num">${s.sf - s.sa > 0 ? '+' : ''}${s.sf - s.sa}</td>${draws ? `<td class="num pts">${s.pts}</td>` : ''}
       </tr>`;
     }).join('');
-    const matches = gms.map(m => gmHtml(t, m, locked)).join('');
+    const matches = groupMatchesHtml(t, g, locked);
     html += `<div class="gcard cut" data-gid="${g.id}">
       <div class="ghead"><h3>Группа ${esc(g.name)}</h3><span class="gprog">${gp}/${gms.length} сыграно</span><span class="sp"></span>
         ${!locked ? `<button class="mini" data-tip="Добавить игрока в группу ${esc(g.name)}" data-action="gadd" data-gid="${g.id}" style="font-size:15px">＋</button>` : ''}
       </div>
       <table class="stand">
-        <tr><th class="num">#</th><th>Игрок</th><th class="num" data-tip="Победы">В</th><th class="num" data-tip="Поражения">П</th><th class="num" data-tip="Разница счёта">±</th></tr>
+        <tr><th class="num" data-tip="Место. При равенстве решает личная встреча, потом разница счёта">#</th><th>Игрок</th><th class="num" data-tip="Победы">В</th>${draws ? '<th class="num" data-tip="Ничьи">Н</th>' : ''}<th class="num" data-tip="Поражения">П</th><th class="num" data-tip="Разница счёта">±</th>${draws ? '<th class="num" data-tip="Очки">О</th>' : ''}</tr>
         ${rows}
       </table>
       <div class="gmatches">${matches || '<span class="note">Меньше двух игроков — матчей нет.</span>'}</div>
@@ -2319,18 +2401,24 @@ function groupsHtml(t, champ) {
 }
 function gmHtml(t, m, locked) {
   const ro = !canEdit(t);
-  const r = isReady(m) && !locked && !ro;
+  const editable = !locked && !ro;
+  const dr = !!m.draw;
+  const r = isReady(m) && !dr && editable;
   const w0 = m.winner && m.winner === m.slots[0].pid, w1 = m.winner && m.winner === m.slots[1].pid;
   const s0 = m.slots[0].score == null ? '·' : m.slots[0].score;
   const s1 = m.slots[1].score == null ? '·' : m.slots[1].score;
-  const dis = (locked || ro) ? 'disabled' : '';
-  return `<div class="gm cut ${r ? 'ready' : ''}">
-    <button class="pname ${w0 ? 'winner' : ''}" ${dis} data-action="win" data-mid="${m.id}" data-si="0" ${r ? 'data-tip="Клик — победа"' : ''}>${esc(pname(t, m.slots[0].pid))}</button>
-    <button class="score" ${dis} data-action="score" data-mid="${m.id}" data-si="0" data-tip="ЛКМ +1 · ПКМ −1">${s0}</button>
-    <span class="vs">:</span>
-    <button class="score" ${dis} data-action="score" data-mid="${m.id}" data-si="1" data-tip="ЛКМ +1 · ПКМ −1">${s1}</button>
-    <button class="pname right ${w1 ? 'winner' : ''}" ${dis} data-action="win" data-mid="${m.id}" data-si="1" ${r ? 'data-tip="Клик — победа"' : ''}>${esc(pname(t, m.slots[1].pid))}</button>
-    ${m.winner && !locked && !ro ? `<button class="mini" data-tip="Отменить результат" data-action="undo" data-mid="${m.id}">↺</button>` : '<span></span>'}
+  const dis = editable ? '' : 'disabled';
+  const id = m.id;
+  const vs = (canDraw(t, m) && editable)
+    ? `<button class="vs draw ${dr ? 'on' : ''}" data-action="draw" data-mid="${id}" data-tip="Ничья">=</button>`
+    : `<span class="vs">${dr ? '=' : ':'}</span>`;
+  return `<div class="gm cut ${r ? 'ready' : ''} ${dr ? 'draw' : ''}">
+    <button class="pname ${w0 ? 'winner' : ''}" ${dis} data-action="win" data-mid="${id}" data-si="0" ${r ? 'data-tip="Клик — победа"' : ''}>${esc(pname(t, m.slots[0].pid))}</button>
+    <button class="score" ${dis} data-action="score" data-mid="${id}" data-si="0" data-tip="ЛКМ +1 · ПКМ −1">${s0}</button>
+    ${vs}
+    <button class="score" ${dis} data-action="score" data-mid="${id}" data-si="1" data-tip="ЛКМ +1 · ПКМ −1">${s1}</button>
+    <button class="pname right ${w1 ? 'winner' : ''}" ${dis} data-action="win" data-mid="${id}" data-si="1" ${r ? 'data-tip="Клик — победа"' : ''}>${esc(pname(t, m.slots[1].pid))}</button>
+    ${matchDone(m) && editable ? `<button class="mini" data-tip="Отменить результат" data-action="undo" data-mid="${id}">↺</button>` : '<span></span>'}
   </div>`;
 }
 
@@ -2341,7 +2429,8 @@ function showHelp() {
     <h4>🎮 Судейство</h4>
     <p><b>Клик по имени игрока</b> — он победил и проходит дальше. Счёт необязателен: по умолчанию запишется 1:0.</p>
     <p><b>Счёт</b> (типа 2:1): кликай по цифре — <span class="key">ЛКМ</span> +1, <span class="key">ПКМ</span> −1.</p>
-    <p><b>Серии BO3/BO5/BO7</b> (выбираются при создании): матч идёт до 2/3/4 побед, и при достижении этого счёта победитель фиксируется автоматически. В «1 игра» победа ставится кликом по имени.</p>
+    <p><b>Серии BO3/BO5/BO7</b> можно задать отдельно для группы, плей-офф и финала. Матч идёт до 2/3/4 побед и фиксируется автоматически. В «1 игра» победа ставится кликом по имени.</p>
+    <p><b>Ничья:</b> если при создании включить «Ничьи и очки», в матчах группы между счётом появляется кнопка <b>«=»</b> — клик ставит ничью (повторный клик снимает). Таблица считается на очки: победа 3, ничья 1, поражение 0 (колонка <b>О</b>).</p>
     <p><b>↺ Отменить</b> — откатывает результат матча и всё, что от него зависело дальше по сетке.</p>
     <p><span class="key">Ctrl+Z</span> — откатить вообще любое последнее действие (результат, удаление игрока, решафл и т.п.), можно несколько раз подряд.</p>
     <h4>🔀 Перемещения и решафлы</h4>
@@ -2360,8 +2449,9 @@ function showHelp() {
     <h4>🏆 Форматы</h4>
     <p><b>Олимпийка</b> — проиграл и вылетел; опционально матч за 3-е место.</p>
     <p><b>Double elim</b> — после поражения падаешь в нижнюю сетку, второе поражение — вылет. Если победитель нижней берёт гранд-финал, играется решающий матч.</p>
-    <p><b>Группы</b> — круговая внутри групп, потом топ-N из каждой выходят в плей-офф.</p>
-    <p><b>Каждый с каждым</b> — круговая лига: все играют со всеми, чемпион определяется по таблице (победы, потом разница счёта).</p>
+    <p><b>Группы</b> — круговая внутри групп, потом топ-N из каждой выходят в плей-офф. Можно <b>1 группу</b> (все со всеми). Игроки раскидываются «змейкой», чтобы сильные (верх списка) разошлись по группам.</p>
+    <p><b>Каждый с каждым</b> — круговая лига: все играют со всеми, чемпион по таблице.</p>
+    <p><b>Расписание по турам:</b> матчи группы разбиты на туры, показано <b>кто отдыхает</b> (при нечётном числе), текущий тур подсвечен. Порядок таблицы при равенстве решает <b>личная встреча</b>, затем разница счёта.</p>
     <h4>🌐 Живые турниры</h4>
     <p><b>🌐 Live</b> в шапке турнира — включает онлайн-трансляцию и даёт две ссылки: <b>зрительскую</b> (смотрят в реальном времени) и <b>судейскую</b> (могут редактировать вместе с тобой). Работает с любых устройств.</p>
     <p>Зелёный бейдж <b>LIVE</b> — всё синхронизируется; жёлтый — отправка; красный — нет связи (проверь интернет, изменения уйдут при восстановлении после следующего действия).</p>
@@ -2415,7 +2505,7 @@ function drawEdges() {
 window.addEventListener('resize', () => requestAnimationFrame(drawEdges));
 
 /* ================= events ================= */
-const MUT_ACTIONS = new Set(['win', 'score', 'undo', 'rename', 'pdel', 'fill', 'gadd', 'gdel', 'makepo', 'resetpo', 'reseed', 'addp', 'trename', 'raddgo', 'rdel']);
+const MUT_ACTIONS = new Set(['win', 'score', 'draw', 'undo', 'rename', 'pdel', 'fill', 'gadd', 'gdel', 'makepo', 'resetpo', 'reseed', 'addp', 'trename', 'raddgo', 'rdel']);
 document.addEventListener('click', async e => {
   const el = e.target.closest('[data-action]');
   if (!el || el.disabled) return;
@@ -2521,7 +2611,7 @@ document.addEventListener('click', async e => {
   else if (a === 'score') {
     if (!t) return;
     const m = t.matches[el.dataset.mid], si = +el.dataset.si;
-    if (!m.slots[si].pid || m.slots[si].pid === 'BYE' || m.auto || m.winner) return;
+    if (!m.slots[si].pid || m.slots[si].pid === 'BYE' || m.auto || matchDone(m)) return;
     m.slots[si].score = (m.slots[si].score || 0) + 1;
     const need = winsNeededM(t, m);
     if (need > 1 && isReady(m) && m.slots[si].score >= need) {
@@ -2530,6 +2620,14 @@ document.addEventListener('click', async e => {
       resolveByes(t);
       sndWin();
     }
+    save(); render();
+  }
+  else if (a === 'draw') {
+    if (!t) return;
+    const m = t.matches[el.dataset.mid];
+    if (!canDraw(t, m)) return;
+    if (m.draw) { m.draw = false; }               // повторный клик — снять ничью
+    else { m.winner = null; m.auto = false; m.draw = true; }
     save(); render();
   }
   else if (a === 'undo') {
@@ -2626,6 +2724,7 @@ document.addEventListener('change', e => {
     const v = document.querySelector('input[name=fmt]:checked').value;
     document.getElementById('optThird').classList.toggle('hidden', v === 'double' || v === 'rr');
     document.getElementById('optGroups').classList.toggle('hidden', v !== 'groups');
+    document.getElementById('optDraws').classList.toggle('hidden', v !== 'groups' && v !== 'rr');
     // Селекты best-of по стадиям: группа — для групп/лиги, плей-офф и финал — для сеток.
     document.getElementById('boGroupWrap').classList.toggle('hidden', v !== 'groups' && v !== 'rr');
     document.getElementById('boPoWrap').classList.toggle('hidden', v === 'rr');
@@ -2698,6 +2797,8 @@ document.addEventListener('submit', e => {
     boGroup: +document.getElementById('cBoGroup').value,
     boPlayoff: +document.getElementById('cBoPo').value,
     boFinal: +document.getElementById('cBoFinal').value,
+    draws: document.getElementById('cDraws').checked,
+    ptsWin: 3, ptsDraw: 1, ptsLoss: 0,
     advance: 2
   };
   createTournament(name, fmt, names, opts);
