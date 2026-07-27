@@ -223,6 +223,9 @@ b.over-t{color:var(--red)}
 .tourinfo{--c:12px;--bl:linear-gradient(135deg,var(--gold2),var(--gold-deep));margin:6px 0 4px;padding:13px 18px}
 .tourinfo-row{display:flex;flex-wrap:wrap;gap:16px;font-size:13px;color:var(--gold2);font-weight:600}
 .tourinfo-rules{margin-top:9px;font-size:12.5px;color:var(--muted);line-height:1.5;white-space:pre-wrap}
+.tourinfo-row .prize{color:var(--gold2);font-weight:700}
+.tourinfo-links{display:flex;gap:8px;flex-wrap:wrap;margin-top:11px}
+.tourinfo-links .ilink{font-size:12px;color:var(--muted);align-self:center}
 .tourinfo.empty2{--bl:var(--line2);display:flex;align-items:center;gap:12px;flex-wrap:wrap}
 .tourinfo.empty2 .note{flex:1;min-width:180px}
 .hidden{display:none !important}
@@ -3089,36 +3092,57 @@ function podiumHtml(t) {
 function tourInfoHtml(t) {
   const i = (t.opts && t.opts.info) || {};
   const ed = canEdit(t);
-  const bits = [];
-  if (i.when) bits.push(`<span>📅 ${esc(i.when)}</span>`);
-  if (i.venue) bits.push(`<span>📍 ${esc(i.venue)}</span>`);
-  if (t.opts && t.opts.mmrCap) bits.push(`<span>🎚 лимит ${t.opts.mmrCap} MMR</span>`);
-  const has = bits.length || i.rules;
+  const chips = [];
+  if (i.when) chips.push(`<span>📅 ${esc(i.when)}</span>`);
+  if (i.venue) chips.push(`<span>📍 ${esc(i.venue)}</span>`);
+  if (i.slots) chips.push(`<span>👥 ${esc(i.slots)}</span>`);
+  if (t.opts && t.opts.mmrCap) chips.push(`<span>🎚 лимит ${t.opts.mmrCap} MMR</span>`);
+  if (i.prize) chips.push(`<span class="prize">🏆 ${esc(i.prize)}</span>`);
+  if (i.entry) chips.push(`<span>💵 ${esc(i.entry)}</span>`);
+  const links = [];
+  if (i.contact) {
+    const digits = (i.contact.match(/\d/g) || []).length;
+    if (digits >= 7) links.push(`<button class="btn sm ghost" data-action="wa" data-phone="${esc(i.contact)}" data-tip="Написать в WhatsApp">📞 ${esc(i.contact)}</button>`);
+    else links.push(`<span class="ilink">📞 ${esc(i.contact)}</span>`);
+  }
+  if (i.stream) {
+    const url = /^https?:\/\//.test(i.stream) ? i.stream : 'https://' + i.stream;
+    links.push(`<a class="btn sm ghost" href="${esc(url)}" target="_blank" rel="noopener">📺 Стрим</a>`);
+  }
+  const has = chips.length || links.length || i.rules;
   if (!has) return ed
-    ? `<div class="tourinfo cut empty2"><span class="note">Добавь инфо для участников — дата, место, лимит, правила. Она видна всем и по ссылке.</span><button class="btn sm ghost" data-action="editinfo">＋ Инфо</button></div>`
+    ? `<div class="tourinfo cut empty2"><span class="note">Заполни инфо для участников — дата, место, приз, лимит MMR, правила, контакт. Видно всем и по ссылке.</span><button class="btn sm ghost" data-action="editinfo">＋ Инфо</button></div>`
     : '';
   return `<div class="tourinfo cut">
-    <div class="tourinfo-row">${bits.join('')}<span style="flex:1"></span>${ed ? `<button class="mini" data-action="editinfo" data-tip="Редактировать инфо">✎</button>` : ''}</div>
+    <div class="tourinfo-row">${chips.join('')}<span style="flex:1"></span>${ed ? `<button class="mini" data-action="editinfo" data-tip="Редактировать инфо">✎</button>` : ''}</div>
     ${i.rules ? `<div class="tourinfo-rules">${esc(i.rules)}</div>` : ''}
+    ${links.length ? `<div class="tourinfo-links">${links.join('')}</div>` : ''}
   </div>`;
 }
 function infoEditModal() {
   const t = curT(); if (!t || !canEdit(t)) return;
   const i = t.opts.info || {};
+  const fld = (id, val, ph) => `<input id="${id}" value="${esc(val || '')}" placeholder="${ph}">`;
   const ov = openModal(`
     <div class="mtitle">Инфо турнира</div>
-    <div class="mbody" style="text-align:left;display:flex;flex-direction:column;gap:2px">
-      <label class="flbl">Когда</label><input id="tiWhen" value="${esc(i.when || '')}" placeholder="сб, 20:00">
-      <label class="flbl">Где</label><input id="tiVenue" value="${esc(i.venue || '')}" placeholder="Discord / клуб">
+    <div class="mbody pedit" style="text-align:left;max-height:70vh;overflow:auto">
+      <label class="flbl">Когда</label>${fld('tiWhen', i.when, 'сб, 20:00')}
+      <label class="flbl">Где</label>${fld('tiVenue', i.venue, 'Discord / клуб / адрес')}
+      <label class="flbl">Приз / что на кону</label>${fld('tiPrize', i.prize, 'напр. 20 000 ₸ / буткемп')}
+      <label class="flbl">Взнос за участие</label>${fld('tiEntry', i.entry, 'напр. 2000 ₸ с команды / бесплатно')}
+      <label class="flbl">Слотов (команд/игроков)</label>${fld('tiSlots', i.slots, 'напр. 8 команд')}
       <label class="flbl">Лимит MMR команды</label><input id="tiCap" type="number" inputmode="numeric" value="${t.opts.mmrCap || ''}" placeholder="без лимита">
-      <label class="flbl">Правила / условия</label><textarea id="tiRules" rows="3" placeholder="формат, лимиты, что можно/нельзя…">${esc(i.rules || '')}</textarea>
+      <label class="flbl">Организатор / контакт</label>${fld('tiContact', i.contact, '@ник или +7… (WhatsApp)')}
+      <label class="flbl">Стрим</label>${fld('tiStream', i.stream, 'ссылка twitch / youtube')}
+      <label class="flbl">Правила / условия</label><textarea id="tiRules" rows="4" placeholder="формат, лимиты, что можно/нельзя, расписание…">${esc(i.rules || '')}</textarea>
     </div>
-    <div class="mrow"><span style="flex:1"></span><button class="btn ghost" id="tiCancel">Отмена</button><button class="btn primary" id="tiSave">Сохранить</button></div>`);
+    <div class="mrow"><span style="flex:1"></span><button class="btn ghost" id="tiCancel">Отмена</button><button class="btn primary" id="tiSave">Сохранить</button></div>`, true);
   ov.querySelector('#tiCancel').onclick = () => closeModal(ov);
   ov.onclick = e => { if (e.target === ov) closeModal(ov); };
+  const v = id => ov.querySelector('#' + id).value.trim();
   ov.querySelector('#tiSave').onclick = () => {
-    t.opts.info = { when: ov.querySelector('#tiWhen').value.trim(), venue: ov.querySelector('#tiVenue').value.trim(), rules: ov.querySelector('#tiRules').value.trim() };
-    t.opts.mmrCap = parseInt(ov.querySelector('#tiCap').value.trim(), 10) || 0;
+    t.opts.info = { when: v('tiWhen'), venue: v('tiVenue'), prize: v('tiPrize'), entry: v('tiEntry'), slots: v('tiSlots'), contact: v('tiContact'), stream: v('tiStream'), rules: v('tiRules') };
+    t.opts.mmrCap = parseInt(v('tiCap'), 10) || 0;
     save(); closeModal(ov); render(); toast('Инфо сохранено', '✓');
   };
 }
