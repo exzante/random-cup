@@ -184,6 +184,25 @@ textarea{resize:vertical;line-height:1.8}
 .fmtopt input:focus-visible + .card{outline:2px solid var(--gold);outline-offset:2px}
 .pcount{font-size:12px;color:var(--muted);margin-top:8px;min-height:18px}
 .pcount b{color:var(--gold2)}
+.regpick{position:relative;margin-bottom:8px}
+.regpick input{width:100%}
+.regpicklist{position:absolute;left:0;right:0;top:calc(100% + 4px);z-index:20;background:var(--panel);border:1px solid var(--gold-deep);max-height:280px;overflow:auto;display:none;box-shadow:0 16px 40px rgba(0,0,0,.5)}
+.regpicklist.on{display:block}
+.regpickitem{display:flex;align-items:center;gap:9px;width:100%;padding:8px 11px;text-align:left;border-bottom:1px solid var(--line);transition:background .1s}
+.regpickitem:hover{background:var(--gold-soft)}
+.regpickitem .rpn{flex:1;min-width:0;font-weight:600;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.regpickitem .rpn i{color:var(--muted);font-style:normal;font-weight:400;font-size:11px}
+.regpickitem .rpp{font-size:10px;color:var(--gold2);background:var(--gold-soft);border:1px solid var(--gold-deep);padding:1px 6px}
+.regpickitem .rpm{font-family:var(--disp);font-weight:700;font-size:13px;color:var(--gold2);font-variant-numeric:tabular-nums}
+.capinfo{display:flex;flex-direction:column;gap:5px;margin-top:8px}
+.caprow{display:flex;align-items:center;gap:10px;font-size:12.5px;padding:6px 11px;background:var(--panel2);border:1px solid var(--line)}
+.caprow.over{border-color:rgba(255,92,92,.5);background:rgba(255,92,92,.07)}
+.caprow .cn{flex:1;min-width:0;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.caprow .cs{font-family:var(--disp);font-weight:700;color:var(--gold2);font-variant-numeric:tabular-nums}
+.caprow.over .cs{color:var(--red)}
+.caprow .cok{color:var(--green)}
+.caprow .cbad{font-size:10px;font-weight:700;color:var(--red);text-transform:uppercase;letter-spacing:.05em}
+.caprow .cmiss{font-size:10.5px;color:var(--muted);border:1px dashed var(--line2);padding:1px 7px}
 .chk{display:inline-flex;align-items:center;gap:9px;cursor:pointer;user-select:none;font-weight:500}
 .chk input[type=checkbox]{accent-color:var(--gold);width:17px;height:17px;cursor:pointer}
 .inline{display:flex;gap:20px;align-items:center;flex-wrap:wrap}
@@ -2716,11 +2735,19 @@ function screenCreate() {
     </div>
     <div class="frow">
       <label class="lbl" for="cPlayers">Участники — по одному на строку. Команда: «Название: игрок1, игрок2»</label>
+      <div class="regpick">
+        <input id="cReg" placeholder="🔎 Добавить из базы — имя или ник…" autocomplete="off">
+        <div id="cRegList" class="regpicklist"></div>
+      </div>
       <textarea id="cPlayers" rows="8" placeholder="Азамат&#10;Данияр&#10;Ерлан&#10;Санжар&#10;..."></textarea>
       <div style="display:flex;align-items:center;gap:12px;margin-top:8px">
         <div class="pcount" id="pCount" style="margin:0;flex:1"></div>
         <button type="button" class="btn sm ghost" data-action="shufflecreate" data-tip="Случайный порядок — случайный посев">🎲 Перемешать</button>
       </div>
+      <div id="capInfo" class="capinfo"></div>
+    </div>
+    <div class="frow inline">
+      <label class="chk" data-tip="Суммарный MMR команды не должен превышать лимит. Пусто/0 — без лимита. MMR берётся из базы игроков по имени/нику.">Лимит MMR команды:&nbsp;<input id="cCap" type="number" inputmode="numeric" placeholder="без лимита" style="width:140px"></label>
     </div>
     <div class="frow inline" id="optBO">
       <label class="chk hidden" id="boGroupWrap" data-tip="До скольких побед идёт матч в группе / лиге"><span id="boGroupLbl">Группа</span>:&nbsp;<select id="cBoGroup">
@@ -3032,7 +3059,7 @@ document.addEventListener('click', async e => {
   if (MUT_ACTIONS.has(a) && t && !canEdit(t)) { toast('Режим зрителя — менять нельзя', '👁'); return; }
 
   if (a === 'home') { view = { screen: 'home', tid: null }; render(); }
-  else if (a === 'new') { view = { screen: 'create', tid: null }; render(); }
+  else if (a === 'new') { view = { screen: 'create', tid: null }; render(); regLoad(); }
   else if (a === 'help') showHelp();
   else if (a === 'coachoff') { localStorage.setItem('turnir_coach2', '1'); render(); }
   else if (a === 'open') { view = { screen: 'tour', tid: el.dataset.tid }; render(); }
@@ -3107,6 +3134,14 @@ document.addEventListener('click', async e => {
   }
   else if (a === 'regview') { regView = regView === 'pos' ? 'list' : 'pos'; render(); }
   else if (a === 'posfilter') { regPosFilter = el.dataset.val; render(); }
+  else if (a === 'pickreg') {
+    const ta = document.getElementById('cPlayers'); if (!ta) return;
+    const cur = ta.value.replace(/\s+$/, '');
+    ta.value = (cur ? cur + '\n' : '') + el.dataset.name;
+    const s = document.getElementById('cReg'); if (s) s.value = '';
+    const box = document.getElementById('cRegList'); if (box) { box.innerHTML = ''; box.classList.remove('on'); }
+    updatePCount(); ta.focus();
+  }
   else if (a === 'myprofile') { if (isPlayer()) { view = { screen: 'profile', pid: myId(), tid: null }; render(); } }
   else if (a === 'logout') {
     if (isPlayer()) { rcPlayer = null; localStorage.removeItem('rc_player'); toast('Вышел', '🔒'); view = { screen: 'players', tid: null }; render(); regLoad(); }
@@ -3277,7 +3312,47 @@ document.addEventListener('change', e => {
   }
 });
 
+/* набор из базы: резолвим участника по нику/имени -> MMR */
+function regFind(token) {
+  const k = (token || '').trim().toLowerCase(); if (!k) return null;
+  return DB.players.find(p => (p.nick || '').toLowerCase() === k) || DB.players.find(p => p.name.toLowerCase() === k) || null;
+}
+function regMmrOf(token) { const p = regFind(token); return p && p.mmr != null ? p.mmr : null; }
+function renderRegPick(q) {
+  const box = document.getElementById('cRegList'); if (!box) return;
+  q = (q || '').trim().toLowerCase();
+  if (!q) { box.innerHTML = ''; box.classList.remove('on'); return; }
+  const matches = DB.players
+    .filter(p => (p.name + ' ' + (p.nick || '')).toLowerCase().includes(q))
+    .sort((a, b) => (b.mmr || 0) - (a.mmr || 0)).slice(0, 8);
+  box.innerHTML = matches.length
+    ? matches.map(p => `<button type="button" class="regpickitem" data-action="pickreg" data-name="${esc(p.name)}">
+        ${avatarByName(p.nick || p.name)}<span class="rpn">${esc(p.name)}${p.nick ? ` <i>@${esc(p.nick)}</i>` : ''}</span>${posArr(p).length ? `<span class="rpp">${posArr(p).join('/')}</span>` : ''}<span class="rpm">${p.mmr != null ? p.mmr : '—'}</span>
+      </button>`).join('')
+    : '<div class="note" style="padding:9px 11px">Не найдено. Добавь игрока в базу заранее.</div>';
+  box.classList.add('on');
+}
+function updateCapInfo() {
+  const box = document.getElementById('capInfo'); if (!box) return;
+  const capEl = document.getElementById('cCap');
+  const cap = capEl ? (parseInt((capEl.value || '').trim(), 10) || 0) : 0;
+  const teams = document.getElementById('cPlayers').value.split('\n').map(s => s.trim()).filter(Boolean)
+    .map(parseEntry).filter(e => e.members && e.members.length);
+  if (!teams.length) { box.innerHTML = ''; return; }
+  box.innerHTML = teams.map(t => {
+    const sum = t.members.reduce((a, m) => a + (regMmrOf(m) || 0), 0);
+    const missing = t.members.filter(m => regMmrOf(m) == null);
+    const over = cap > 0 && sum > cap;
+    return `<div class="caprow ${over ? 'over' : ''}">
+      <span class="cn">${esc(t.name)}</span>
+      <span class="cs">${sum}${cap > 0 ? ` / ${cap}` : ''} MMR</span>
+      ${over ? '<span class="cbad">превышен</span>' : (cap > 0 ? '<span class="cok">✓</span>' : '')}
+      ${missing.length ? `<span class="cmiss" data-tip="Нет в базе или без MMR: ${esc(missing.join(', '))}">${missing.length} без MMR</span>` : ''}
+    </div>`;
+  }).join('');
+}
 function updatePCount() {
+  updateCapInfo();
   const el = document.getElementById('pCount');
   if (!el) return;
   const names = document.getElementById('cPlayers').value.split('\n').map(s => s.trim()).filter(Boolean);
@@ -3297,6 +3372,8 @@ function updatePCount() {
 }
 document.addEventListener('input', e => {
   if (e.target.id === 'cPlayers') updatePCount();
+  if (e.target.id === 'cReg') renderRegPick(e.target.value);
+  if (e.target.id === 'cCap') updateCapInfo();
   if (e.target.id === 'pSearch') {
     const q = e.target.value.trim().toLowerCase();
     document.querySelectorAll('.prow').forEach(el => {
@@ -3333,13 +3410,20 @@ document.addEventListener('keydown', async e => {
   }
 });
 
-document.addEventListener('submit', e => {
+document.addEventListener('submit', async e => {
   if (e.target.id !== 'createForm') return;
   e.preventDefault();
   const name = document.getElementById('cName').value.trim() || 'Турнир';
   const fmt = document.querySelector('input[name=fmt]:checked').value;
   const names = document.getElementById('cPlayers').value.split('\n').map(s => s.trim()).filter(Boolean);
   if (names.length < 2) { uiAlert('Нужно минимум два участника — впиши их в поле, по одному на строку.'); return; }
+  const cap = parseInt((document.getElementById('cCap').value || '').trim(), 10) || 0;
+  if (cap > 0) {
+    const over = names.map(parseEntry).filter(en => en.members && en.members.length)
+      .map(en => ({ name: en.name, sum: en.members.reduce((a, m) => a + (regMmrOf(m) || 0), 0) }))
+      .filter(x => x.sum > cap);
+    if (over.length && !await uiConfirm(`Превышают лимит ${cap} MMR: ${over.map(x => `${x.name} (${x.sum})`).join(', ')}. Всё равно создать?`, { title: 'Лимит MMR', ok: 'Создать', danger: true })) return;
+  }
   const opts = {
     thirdPlace: document.getElementById('cThird').checked,
     groupCount: +document.getElementById('cGroups').value,
@@ -3348,6 +3432,7 @@ document.addEventListener('submit', e => {
     boFinal: +document.getElementById('cBoFinal').value,
     draws: document.getElementById('cDraws').checked,
     ptsWin: 3, ptsDraw: 1, ptsLoss: 0,
+    mmrCap: cap,
     advance: 2
   };
   createTournament(name, fmt, names, opts);
