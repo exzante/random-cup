@@ -216,6 +216,8 @@ b.over-t{color:var(--red)}
 .chk{display:inline-flex;align-items:center;gap:9px;cursor:pointer;user-select:none;font-weight:500}
 .chk input[type=checkbox]{accent-color:var(--gold);width:17px;height:17px;cursor:pointer}
 .inline{display:flex;gap:20px;align-items:center;flex-wrap:wrap}
+.modetog{display:inline-flex;gap:4px;margin-bottom:11px}
+.teamtools{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:9px}
 .inforow{display:flex;gap:10px;flex-wrap:wrap}
 .inforow input{flex:1;min-width:160px}
 .tourinfo{--c:12px;--bl:linear-gradient(135deg,var(--gold2),var(--gold-deep));margin:6px 0 4px;padding:13px 18px}
@@ -697,6 +699,7 @@ if (!Array.isArray(DB.players)) DB.players = []; // общий реестр иг
 
 let view = { screen: 'home', tid: null };
 let tbMenuOpen = false;   // выпадающее меню «⋯» в шапке
+let createMode = 'solo';  // тип участников при создании: solo | teams
 let rosterOpen = false;
 let tvMode = false;
 let timerOpen = false;
@@ -2979,12 +2982,23 @@ function screenCreate() {
       </div>
     </div>
     <div class="frow">
-      <label class="lbl" for="cPlayers">Участники — по одному на строку. Команда: «Название: игрок1, игрок2»</label>
-      <div class="regpick">
-        <input id="cReg" placeholder="🔎 Добавить из базы — имя или ник…" autocomplete="off">
-        <div id="cRegList" class="regpicklist"></div>
+      <label class="lbl">Участники</label>
+      <div class="modetog">
+        <button type="button" class="btn sm ${createMode === 'solo' ? 'primary' : 'ghost'}" data-action="cmode" data-mode="solo">👤 Соло игроки</button>
+        <button type="button" class="btn sm ${createMode === 'teams' ? 'primary' : 'ghost'}" data-action="cmode" data-mode="teams">👥 Команды</button>
       </div>
-      <textarea id="cPlayers" rows="8" placeholder="Азамат&#10;Данияр&#10;Ерлан&#10;Санжар&#10;..."></textarea>
+      <div id="soloTools" class="${createMode === 'teams' ? 'hidden' : ''}">
+        <div class="regpick">
+          <input id="cReg" placeholder="🔎 Добавить из базы — имя или ник…" autocomplete="off">
+          <div id="cRegList" class="regpicklist"></div>
+        </div>
+      </div>
+      <div id="teamTools" class="teamtools ${createMode === 'solo' ? 'hidden' : ''}">
+        <button type="button" class="btn sm ghost" data-action="addteam">＋ Команда</button>
+        <label class="chk" data-tip="Суммарный MMR команды не должен превышать лимит. Пусто — без лимита. MMR из базы.">Лимит MMR:&nbsp;<input id="cCap" type="number" inputmode="numeric" placeholder="без лимита" style="width:120px"></label>
+        <span class="note">Строка = команда «Название: игрок1, игрок2». Добор — «＋ игрок» у команды ниже.</span>
+      </div>
+      <textarea id="cPlayers" rows="8" placeholder="${createMode === 'teams' ? 'Тигры: Азамат, Ерлан&#10;Волки: Данияр, Санжар&#10;...' : 'Азамат&#10;Данияр&#10;Ерлан&#10;...'}"></textarea>
       <div style="display:flex;align-items:center;gap:12px;margin-top:8px">
         <div class="pcount" id="pCount" style="margin:0;flex:1"></div>
         <button type="button" class="btn sm ghost" data-action="shufflecreate" data-tip="Случайный порядок — случайный посев">🎲 Перемешать</button>
@@ -3005,9 +3019,6 @@ function screenCreate() {
       <button type="button" class="btn sm ghost" data-action="advtoggle" id="advBtn" data-tip="Формат матчей (BO), лимит MMR, ничьи/очки">⚙ Дополнительно ▾</button>
     </div>
     <div id="advOpts" class="advopts hidden">
-      <div class="frow inline">
-        <label class="chk" data-tip="Суммарный MMR команды не должен превышать лимит. Пусто/0 — без лимита. MMR берётся из базы игроков по имени/нику.">Лимит MMR команды:&nbsp;<input id="cCap" type="number" inputmode="numeric" placeholder="без лимита" style="width:140px"></label>
-      </div>
       <div class="frow inline" id="optBO">
         <label class="chk hidden" id="boGroupWrap" data-tip="До скольких побед идёт матч в группе / лиге"><span id="boGroupLbl">Группа</span>:&nbsp;<select id="cBoGroup">
           <option value="1">1 игра</option>
@@ -3452,6 +3463,26 @@ document.addEventListener('click', async e => {
   }
   else if (a === 'regview') { regView = regView === 'pos' ? 'list' : 'pos'; render(); }
   else if (a === 'posfilter') { regPosFilter = el.dataset.val; render(); }
+  else if (a === 'cmode') {
+    createMode = el.dataset.mode;
+    document.getElementById('soloTools').classList.toggle('hidden', createMode === 'teams');
+    document.getElementById('teamTools').classList.toggle('hidden', createMode === 'solo');
+    document.querySelectorAll('[data-action=cmode]').forEach(bt => {
+      const on = bt.dataset.mode === createMode;
+      bt.classList.toggle('primary', on); bt.classList.toggle('ghost', !on);
+    });
+    const ta = document.getElementById('cPlayers');
+    if (ta) ta.placeholder = createMode === 'teams' ? 'Тигры: Азамат, Ерлан\nВолки: Данияр, Санжар\n...' : 'Азамат\nДанияр\nЕрлан\n...';
+    updatePCount();
+  }
+  else if (a === 'addteam') {
+    const ta = document.getElementById('cPlayers'); if (!ta) return;
+    const cnt = ta.value.split('\n').filter(s => s.includes(':')).length;
+    const cur = ta.value.replace(/\s+$/, '');
+    ta.value = (cur ? cur + '\n' : '') + 'Команда ' + (cnt + 1) + ': ';
+    updatePCount(); ta.focus();
+    ta.selectionStart = ta.selectionEnd = ta.value.length;
+  }
   else if (a === 'teamfill') { teamFillModal(+el.dataset.line); }
   else if (a === 'pickreg') {
     const ta = document.getElementById('cPlayers'); if (!ta) return;
@@ -3664,14 +3695,14 @@ function updateCapInfo() {
   const cap = capEl ? (parseInt((capEl.value || '').trim(), 10) || 0) : 0;
   const rows = [];
   ta.value.split('\n').forEach((raw, idx) => {
-    const s = raw.trim(); if (!s) return;
+    const s = raw.trim(); if (!s || !s.includes(':')) return;
     const e = parseEntry(s);
-    if (!(e.members && e.members.length)) return;
-    const sum = e.members.reduce((a, m) => a + (regMmrOf(m) || 0), 0);
-    const missing = e.members.filter(m => regMmrOf(m) == null);
+    const members = e.members || [];
+    const sum = members.reduce((a, m) => a + (regMmrOf(m) || 0), 0);
+    const missing = members.filter(m => regMmrOf(m) == null);
     const rem = cap - sum, over = cap > 0 && sum > cap;
     rows.push(`<div class="caprow ${over ? 'over' : ''}">
-      <span class="cn">${esc(e.name)} <small>×${e.members.length}</small></span>
+      <span class="cn">${esc(e.name)} <small>×${members.length}</small></span>
       <span class="cs">${sum}${cap > 0 ? ` / ${cap}` : ''}</span>
       ${cap > 0 ? (over ? `<span class="cbad">−${sum - cap}</span>` : `<span class="crem" data-tip="Осталось до лимита">+${rem} свободно</span>`) : ''}
       ${missing.length ? `<span class="cmiss" data-tip="Нет в базе или без MMR: ${esc(missing.join(', '))}">${missing.length} без MMR</span>` : ''}
@@ -3694,8 +3725,9 @@ function teamFillModal(lineIdx) {
   const renderList = (q) => {
     const box = ov.querySelector('#tfList'); if (!box) return;
     const cur = ta.value.split('\n');
+    if (!(cur[lineIdx] || '').includes(':')) { closeModal(ov); return; }
     const en = parseEntry((cur[lineIdx] || '').trim());
-    if (!en.members) { closeModal(ov); return; }
+    en.members = en.members || [];
     const sum = en.members.reduce((a, m) => a + (regMmrOf(m) || 0), 0);
     const rem = cap > 0 ? cap - sum : Infinity;
     const used = new Set();
