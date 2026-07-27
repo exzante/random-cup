@@ -83,6 +83,11 @@ textarea{resize:vertical;line-height:1.8}
 .badge{display:inline-flex;align-items:center;gap:5px;font-family:var(--disp);font-size:10px;font-weight:500;letter-spacing:.18em;text-transform:uppercase;
   color:var(--muted);border:1px solid var(--line2);padding:3px 11px;white-space:nowrap;background:var(--panel)}
 .prog{display:flex;align-items:center;gap:8px;font-size:11px;color:var(--muted);font-weight:700}
+.tbmenu{position:relative}
+.tbmenupanel{position:absolute;right:0;top:calc(100% + 6px);z-index:40;min-width:210px;background:var(--panel);border:1px solid var(--gold-deep);box-shadow:0 16px 40px rgba(0,0,0,.55);display:none;flex-direction:column;padding:4px}
+.tbmenupanel.on{display:flex}
+.tbmenupanel button{display:flex;align-items:center;gap:9px;width:100%;text-align:left;padding:10px 13px;font-size:13px;color:var(--text);transition:background .1s}
+.tbmenupanel button:hover{background:var(--gold-soft);color:var(--gold2)}
 .prog .bar{width:88px;height:4px;background:var(--panel3);overflow:hidden}
 .prog .bar i{display:block;height:100%;background:linear-gradient(90deg,var(--gold-deep),var(--gold2));transition:width .4s ease}
 .prog.full .bar i{background:linear-gradient(90deg,#1E8E68,var(--green))}
@@ -674,6 +679,7 @@ if (!DB || !Array.isArray(DB.tournaments)) DB = { tournaments: [] };
 if (!Array.isArray(DB.players)) DB.players = []; // общий реестр игроков (база знаний)
 
 let view = { screen: 'home', tid: null };
+let tbMenuOpen = false;   // выпадающее меню «⋯» в шапке
 let rosterOpen = false;
 let tvMode = false;
 let timerOpen = false;
@@ -2110,6 +2116,9 @@ document.addEventListener('wheel', e => {
 document.addEventListener('click', e => {
   if (suppressClick) { e.stopImmediatePropagation(); e.preventDefault(); suppressClick = false; }
 }, true);
+document.addEventListener('pointerdown', e => {
+  if (tbMenuOpen && !e.target.closest('.tbmenu')) { tbMenuOpen = false; renderTopbar(); }
+});
 
 /* ================= render helpers ================= */
 function srcText(t, src) {
@@ -2248,6 +2257,28 @@ function render() {
     }
   }
 }
+function loginBtn() {
+  if (isPlayer()) return `<button class="btn sm ghost" data-action="myprofile" data-tip="Мой профиль">👤 @${esc(rcPlayer.username)}</button>`;
+  if (isAdmin()) return `<button class="btn sm ghost" data-action="adminlogin" data-tip="Выйти из организатора">🔓 Админ</button>`;
+  return `<button class="btn sm ghost" data-action="adminlogin" data-tip="Вход для организатора и игроков">🔒 Войти</button>`;
+}
+function tbMenuHtml() {
+  const items = [];
+  if (view.screen === 'home') {
+    items.push(`<button data-action="export">💾 Скачать бэкап</button>`);
+    items.push(`<button data-action="import">📂 Импорт из файла</button>`);
+  }
+  if (view.screen === 'tour' && curT()) {
+    items.push(`<button data-action="shot">📸 Скачать картинкой</button>`);
+    items.push(`<button data-action="tv">📺 Режим проектора</button>`);
+  }
+  items.push(`<button data-action="mute">${soundOn ? '🔊 Звук: включён' : '🔇 Звук: выключен'}</button>`);
+  items.push(`<button data-action="help">❔ Как пользоваться</button>`);
+  return `<div class="tbmenu">
+    <button class="btn sm icon ghost" data-action="tbmenu" data-tip="Ещё">⋯</button>
+    <div class="tbmenupanel ${tbMenuOpen ? 'on' : ''}">${items.join('')}</div>
+  </div>`;
+}
 function renderTopbar() {
   const t = view.screen === 'tour' ? curT() : null;
   let mid = '';
@@ -2271,9 +2302,7 @@ function renderTopbar() {
        <button class="btn sm ${rosterOpen ? 'primary' : 'ghost'}" data-action="roster" data-tip="Состав турнира">👥 ${Object.keys(t.players).length}</button>
        ${editor ? `<button class="btn sm ghost" data-action="addp" data-tip="Добавить участника: сядет на свободное место или расширит сетку">+ Игрок</button>` : ''}
        ${canReseed ? `<button class="btn sm icon ghost" data-action="reseed" data-tip="Перемешать посев заново">🎲</button>` : ''}
-       <button class="btn sm icon ${timerOpen ? 'primary' : 'ghost'}" data-action="timer" data-tip="Таймер матча">⏱</button>
-       <button class="btn sm icon ghost" data-action="shot" data-tip="Скачать сетку картинкой (PNG)">📸</button>
-       <button class="btn sm icon ghost" data-action="tv" data-tip="Режим проектора: чистый полный экран">📺</button>` : '';
+       <button class="btn sm icon ${timerOpen ? 'primary' : 'ghost'}" data-action="timer" data-tip="Таймер матча">⏱</button>` : '';
   document.getElementById('topbar').innerHTML = `<div class="tbin">
     <button class="brand" data-action="home" data-tip="На главную">
       <span class="cup">RC</span>
@@ -2283,9 +2312,7 @@ function renderTopbar() {
     <span class="spacer"></span>
     ${view.screen === 'home'
       ? `<button class="btn sm ghost" data-action="lobbies" data-tip="Лобби / пикапы: собрать катку, подать заявку">🎮 Лобби</button>
-         <button class="btn sm ghost" data-action="players" data-tip="База игроков: имена, ники, MMR, история">👥 Игроки</button>
-         <button class="btn sm ghost" data-action="export" data-tip="Скачать все турниры в JSON-файл">💾 Бэкап</button>
-         <button class="btn sm ghost" data-action="import" data-tip="Загрузить турниры из файла">📂 Импорт</button>`
+         <button class="btn sm ghost" data-action="players" data-tip="База игроков: имена, ники, MMR, история">👥 Игроки</button>`
       : view.screen === 'players'
       ? `<button class="btn sm ghost" data-action="home">← На главную</button>`
       : view.screen === 'lobbies'
@@ -2293,13 +2320,9 @@ function renderTopbar() {
       : view.screen === 'profile'
       ? `<button class="btn sm ghost" data-action="players">← К игрокам</button>`
       : `${addBtn}<button class="btn sm ghost" data-action="home">← Все турниры</button>`}
-    ${['home', 'players', 'profile', 'lobbies'].includes(view.screen)
-      ? (isPlayer()
-        ? `<button class="btn sm icon ghost" data-action="myprofile" data-tip="@${esc(rcPlayer.username)} — мой профиль">👤</button>`
-        : `<button class="btn sm icon ghost" data-action="adminlogin" data-tip="${isAdmin() ? 'Организатор — выйти' : 'Вход'}">${isAdmin() ? '🔓' : '🔒'}</button>`) : ''}
-    <button class="btn sm icon ghost" data-action="mute" data-tip="${soundOn ? 'Звук включён' : 'Звук выключен'}">${soundOn ? '🔊' : '🔇'}</button>
-    <button class="btn sm icon ghost" data-action="help" data-tip="Справка">❔</button>
+    ${['home', 'players', 'profile', 'lobbies'].includes(view.screen) ? loginBtn() : ''}
     ${view.screen === 'home' ? `<button class="btn primary sm" data-action="new">+ Новый турнир</button>` : ''}
+    ${tbMenuHtml()}
   </div>`;
 }
 function renderTvbar() {
@@ -2839,9 +2862,9 @@ function screenHome() {
       ${p.first ? `<div class="champline">🏆 ${esc(pname(t, p.first))}</div>` : `<div class="meta">в процессе — ${pr.pct}%</div>`}
       <div class="pbar ${pr.pct === 100 ? 'full' : ''}"><i style="width:${pr.pct}%"></i></div>
       <div class="row">
-        <button class="btn sm primary" data-action="open" data-tid="${t.id}">Открыть</button>
-        <button class="btn sm ghost" data-action="rematch" data-tid="${t.id}" data-tip="Реванш: новый турнир с теми же игроками">🔁</button>
-        <button class="btn sm danger" data-action="del" data-tid="${t.id}">Удалить</button>
+        <button class="btn sm primary" data-action="open" data-tid="${t.id}" style="flex:1">Открыть</button>
+        <button class="btn sm icon ghost" data-action="rematch" data-tid="${t.id}" data-tip="Реванш: новый турнир с теми же игроками">🔁</button>
+        <button class="btn sm icon ghost" data-action="del" data-tid="${t.id}" data-tip="Удалить турнир">🗑</button>
       </div>
     </div>`;
   }).join('');
@@ -3222,6 +3245,8 @@ document.addEventListener('click', async e => {
   const a = el.dataset.action;
   const t = curT();
   if (MUT_ACTIONS.has(a) && t && !canEdit(t)) { toast('Режим зрителя — менять нельзя', '👁'); return; }
+  if (a === 'tbmenu') { tbMenuOpen = !tbMenuOpen; renderTopbar(); return; }
+  if (tbMenuOpen && a !== 'tbmenu') { tbMenuOpen = false; renderTopbar(); }
 
   if (a === 'home') { view = { screen: 'home', tid: null }; render(); }
   else if (a === 'new') { view = { screen: 'create', tid: null }; render(); regLoad(); }
