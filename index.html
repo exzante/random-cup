@@ -212,6 +212,11 @@ textarea{resize:vertical;line-height:1.8}
 .chk{display:inline-flex;align-items:center;gap:9px;cursor:pointer;user-select:none;font-weight:500}
 .chk input[type=checkbox]{accent-color:var(--gold);width:17px;height:17px;cursor:pointer}
 .inline{display:flex;gap:20px;align-items:center;flex-wrap:wrap}
+.inforow{display:flex;gap:10px;flex-wrap:wrap}
+.inforow input{flex:1;min-width:160px}
+.tourinfo{--c:12px;--bl:linear-gradient(135deg,var(--gold2),var(--gold-deep));margin:6px 0 4px;padding:13px 18px}
+.tourinfo-row{display:flex;flex-wrap:wrap;gap:16px;font-size:13px;color:var(--gold2);font-weight:600}
+.tourinfo-rules{margin-top:9px;font-size:12.5px;color:var(--muted);line-height:1.5;white-space:pre-wrap}
 .hidden{display:none !important}
 
 /* ================= bracket ================= */
@@ -3016,6 +3021,14 @@ function screenCreate() {
       <div class="frow inline hidden" id="optDraws">
         <label class="chk" data-tip="Разрешить ничьи в матчах группы; таблица считается на очки (победа 3, ничья 1, поражение 0)"><input type="checkbox" id="cDraws"> Ничьи и очки <span class="note" style="margin-left:4px">(3 / 1 / 0)</span></label>
       </div>
+      <div class="frow">
+        <label class="lbl">Инфо для участников <span class="note">(покажется в турнире и по ссылке)</span></label>
+        <div class="inforow">
+          <input id="cWhen" placeholder="📅 Когда — сб, 20:00">
+          <input id="cVenue" placeholder="📍 Где — Discord / клуб">
+        </div>
+        <textarea id="cRules" rows="2" placeholder="Правила / условия: лимит 25k MMR на команду, только лейты и т.п." style="margin-top:8px"></textarea>
+      </div>
     </div>
     <div class="frow" style="margin-top:26px">
       <button type="submit" class="btn primary">Создать турнир 🚀</button>
@@ -3051,11 +3064,23 @@ function podiumHtml(t) {
   </div>`;
 }
 
+function tourInfoHtml(t) {
+  const i = (t.opts && t.opts.info) || {};
+  const bits = [];
+  if (i.when) bits.push(`<span>📅 ${esc(i.when)}</span>`);
+  if (i.venue) bits.push(`<span>📍 ${esc(i.venue)}</span>`);
+  if (t.opts && t.opts.mmrCap) bits.push(`<span>🎚 лимит ${t.opts.mmrCap} MMR</span>`);
+  if (!bits.length && !i.rules) return '';
+  return `<div class="tourinfo cut">
+    ${bits.length ? `<div class="tourinfo-row">${bits.join('')}</div>` : ''}
+    ${i.rules ? `<div class="tourinfo-rules">${esc(i.rules)}</div>` : ''}
+  </div>`;
+}
 function screenTour() {
   const t = curT();
   if (!t) { view = { screen: 'home', tid: null }; return screenHome(); }
   const champ = podium(t).first;
-  let html = coachHtml() + podiumHtml(t);
+  let html = coachHtml() + tourInfoHtml(t) + podiumHtml(t);
 
   if (t.format === 'single') {
     let cols = elimColsHtml(t, 'wb', champ);
@@ -3697,6 +3722,11 @@ document.addEventListener('submit', async e => {
     draws: document.getElementById('cDraws').checked,
     ptsWin: 3, ptsDraw: 1, ptsLoss: 0,
     mmrCap: cap,
+    info: {
+      when: document.getElementById('cWhen').value.trim(),
+      venue: document.getElementById('cVenue').value.trim(),
+      rules: document.getElementById('cRules').value.trim()
+    },
     advance: 2
   };
   createTournament(name, fmt, names, opts);
