@@ -83,6 +83,7 @@ textarea{resize:vertical;line-height:1.8}
 .badge{display:inline-flex;align-items:center;gap:5px;font-family:var(--disp);font-size:10px;font-weight:500;letter-spacing:.18em;text-transform:uppercase;
   color:var(--muted);border:1px solid var(--line2);padding:3px 11px;white-space:nowrap;background:var(--panel)}
 .prog{display:flex;align-items:center;gap:8px;font-size:11px;color:var(--muted);font-weight:700}
+.navbadge{display:inline-grid;place-items:center;min-width:17px;height:17px;padding:0 4px;margin-left:3px;font-size:10px;font-weight:800;color:#161204;background:linear-gradient(135deg,var(--teal),#1E8E68);border-radius:9px;vertical-align:middle}
 .tbmenu{position:relative}
 .tbmenupanel{position:absolute;right:0;top:calc(100% + 6px);z-index:40;min-width:210px;background:var(--panel);border:1px solid var(--gold-deep);box-shadow:0 16px 40px rgba(0,0,0,.55);display:none;flex-direction:column;padding:4px}
 .tbmenupanel.on{display:flex}
@@ -2326,7 +2327,7 @@ function renderTopbar() {
     ${mid}
     <span class="spacer"></span>
     ${view.screen === 'home'
-      ? `<button class="btn sm ghost" data-action="lobbies" data-tip="Лобби / пикапы: собрать катку, подать заявку">🎮 Лобби</button>
+      ? `<button class="btn sm ghost" data-action="lobbies" data-tip="Лобби / пикапы: собрать катку, подать заявку">🎮 Лобби${(() => { const p = myPendingCount(); return p ? ` <span class="navbadge" data-tip="Новые заявки в твои лобби">${p}</span>` : ''; })()}</button>
          <button class="btn sm ghost" data-action="players" data-tip="База игроков: имена, ники, MMR, история">👥 Игроки</button>`
       : view.screen === 'players'
       ? `<button class="btn sm ghost" data-action="home">← На главную</button>`
@@ -2727,6 +2728,17 @@ function screenProfile(pid) {
 /* ================= лобби (пикапы) ================= */
 let LB = { list: [], signups: [] };
 let lbSyncing = false;
+let lastPending = 0, lobbyInited = false, lobbyChannel = null;
+function ensureLobbyRealtime() {
+  if (lobbyChannel) return;
+  lobbyChannel = 'pending';
+  loadSB().then(() => {
+    lobbyChannel = sb.channel('rc-lobbies')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'lobbies' }, () => lobbyLoad())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'lobby_signups' }, () => lobbyLoad())
+      .subscribe();
+  }).catch(() => { lobbyChannel = null; });
+}
 function actorArgs() {
   if (isAdmin()) return { p_secret: rcSecret, p_username: null, p_password: null };
   if (isPlayer()) return { p_secret: null, p_username: rcPlayer.username, p_password: rcPlayer.pass };
@@ -2734,6 +2746,11 @@ function actorArgs() {
 }
 function myActorId() { return isAdmin() ? 'admin' : (isPlayer() ? myId() : null); }
 function lobbySignups(lid) { return LB.signups.filter(s => s.lobby_id === lid); }
+function myPendingCount() {
+  const mine = myActorId(); if (!mine) return 0;
+  const ids = LB.list.filter(l => l.created_by === mine).map(l => l.id);
+  return LB.signups.filter(s => ids.includes(s.lobby_id) && s.status === 'requested').length;
+}
 async function lobbyLoad() {
   lbSyncing = true; if (view.screen === 'lobbies') renderTopbar();
   try {
@@ -2745,7 +2762,10 @@ async function lobbyLoad() {
     if (r1.error) throw r1.error; if (r2.error) throw r2.error;
     LB.list = r1.data || []; LB.signups = r2.data || [];
     lbSyncing = false;
-    if (view.screen === 'lobbies') render();
+    const pend = myPendingCount();
+    if (lobbyInited && pend > lastPending) toast('Вас откликнули — новая заявка в лобби', '📨', true);
+    lastPending = pend; lobbyInited = true;
+    if (view.screen === 'lobbies') render(); else renderTopbar();
     return true;
   } catch (e) { lbSyncing = false; if (view.screen === 'lobbies') { renderTopbar(); toast('Нет связи с базой', '⚠️'); } return false; }
 }
@@ -3712,6 +3732,8 @@ document.getElementById('importFile').addEventListener('change', e => {
 
 render();
 initLiveFromURL();
+lobbyLoad();          // для бейджа «вас откликнули» на главной
+ensureLobbyRealtime(); // живое обновление лобби/заявок
 </script>
 </body>
 </html>
