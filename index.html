@@ -2128,8 +2128,9 @@ function screenCreate() {
       <label class="chk"><input type="checkbox" id="cThird" checked> Матч за 3-е место</label>
     </div>
     <div class="frow inline hidden" id="optGroups">
-      <label class="chk">Групп:&nbsp;<select id="cGroups">
-        <option>2</option><option>3</option><option selected>4</option><option>5</option><option>6</option><option>8</option>
+      <label class="chk" data-tip="1 группа = все играют со всеми (самое честное). Больше групп — если команд много">Групп:&nbsp;<select id="cGroups">
+        <option value="1">1 — все со всеми</option>
+        <option selected>2</option><option>3</option><option>4</option><option>5</option><option>6</option><option>8</option>
       </select></label>
       <span class="note">Сколько проходят дальше — выберешь, когда группы доиграют.</span>
     </div>
