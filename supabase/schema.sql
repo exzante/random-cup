@@ -12,10 +12,14 @@ create table if not exists public.players (
   mmr          integer,
   mmr_history  jsonb   not null default '[]'::jsonb,  -- [{ "v": 10050, "note": "2022, пик" }, ...]
   note         text,
+  phone        text,                                   -- для связи (WhatsApp): +7...
   account      jsonb,                                  -- на будущее: { "username": "...", "pass_hash": "..." }
   created_at   timestamptz not null default now(),
   updated_at   timestamptz not null default now()
 );
+
+-- Догоняющие колонки (если таблица уже была создана раньше без них) — безопасно.
+alter table public.players add column if not exists phone text;
 
 -- 2) Приватный конфиг (секрет админа). НЕ читается анон-ключом.
 create table if not exists public.rc_config (
@@ -60,7 +64,7 @@ begin
   if not public.rc_check(p_secret) then
     raise exception 'forbidden';
   end if;
-  insert into public.players as pl (id, name, nick, mmr, mmr_history, note, account, updated_at)
+  insert into public.players as pl (id, name, nick, mmr, mmr_history, note, phone, account, updated_at)
   values (
     coalesce(p->>'id', gen_random_uuid()::text),
     p->>'name',
@@ -68,6 +72,7 @@ begin
     nullif(p->>'mmr','')::int,
     coalesce(p->'mmrHistory', '[]'::jsonb),
     p->>'note',
+    p->>'phone',
     p->'account',
     now()
   )
@@ -77,6 +82,7 @@ begin
     mmr = excluded.mmr,
     mmr_history = excluded.mmr_history,
     note = excluded.note,
+    phone = excluded.phone,
     account = coalesce(excluded.account, pl.account),
     updated_at = now()
   returning * into r;

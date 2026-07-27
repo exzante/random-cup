@@ -457,7 +457,17 @@ canvas.confetti{position:fixed;inset:0;z-index:100;pointer-events:none}
 .reghead h2{font-family:var(--disp);font-weight:600;font-size:20px;letter-spacing:.14em;text-transform:uppercase;color:var(--gold2)}
 .regcount{font-size:11px;font-weight:700;color:var(--dim);background:var(--panel2);border:1px solid var(--line);padding:2px 10px}
 .regsearch{width:min(260px,42vw)}
+.regnote{font-size:12.5px;color:var(--muted);background:var(--panel2);border:1px solid var(--line);padding:8px 13px;margin-bottom:14px}
 .reglist{display:flex;flex-direction:column;gap:8px}
+.prow .mini.wa{font-size:13px;opacity:.85}
+.prow .mini.wa:hover{opacity:1;transform:scale(1.15)}
+.pmeta{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:-4px 0 10px}
+.pmeta .pmmr2{font-family:var(--disp);font-weight:700;color:var(--gold2)}
+.pmeta .mini.wa{font-size:12px;background:var(--panel3);padding:4px 10px}
+.pnote2{color:var(--muted);font-size:12.5px;margin:-4px 0 10px}
+.pmmrhist{display:flex;flex-wrap:wrap;gap:7px;margin:-2px 0 12px}
+.pmmrhist span{font-size:11px;color:var(--muted);background:var(--panel2);border:1px solid var(--line);padding:2px 9px}
+.pmmrhist b{color:var(--gold2);font-variant-numeric:tabular-nums}
 .prow{--c:10px;--bl:var(--line);display:flex;align-items:center;gap:12px;padding:11px 15px;cursor:pointer;transition:transform .12s}
 .prow:hover{transform:translateX(2px);--bl:var(--gold-deep)}
 .prow .pcol{display:flex;flex-direction:column;min-width:0;flex:1}
@@ -1278,8 +1288,18 @@ function playerStats(name) {
 function showPlayerStats(name) {
   const s = playerStats(name);
   const wr = (s.w + s.l) ? Math.round(s.w / (s.w + s.l) * 100) : 0;
+  const reg = DB.players.find(p => p.name.toLowerCase() === (name || '').toLowerCase());
+  const peak = reg ? peakMmr(reg) : 0;
+  const meta = reg ? `<div class="pmeta">
+      ${reg.nick ? `<span>@${esc(reg.nick)}</span>` : ''}
+      ${reg.mmr != null ? `<span class="pmmr2">${reg.mmr} MMR</span>` : ''}
+      ${peak > (reg.mmr || 0) ? `<span class="ppeak">пик ${peak}</span>` : ''}
+      ${reg.phone ? `<button class="mini wa" data-action="wa" data-phone="${esc(reg.phone)}" data-tip="Написать в WhatsApp">🟢 WhatsApp</button>` : ''}
+    </div>${reg.note ? `<div class="pnote2">${esc(reg.note)}</div>` : ''}
+    ${reg.mmrHistory && reg.mmrHistory.length ? `<div class="pmmrhist">${reg.mmrHistory.map(h => `<span><b>${h.v}</b>${h.note ? ' · ' + esc(h.note) : ''}</span>`).join('')}</div>` : ''}` : '';
   const ov = openModal(`<div class="pstat">
-    <div class="mtitle" style="display:flex;align-items:center;gap:10px">${avatarByName(s.name)} ${esc(s.name)}</div>
+    <div class="mtitle" style="display:flex;align-items:center;gap:10px">${avatarByName(reg ? (reg.nick || reg.name) : s.name)} ${esc(s.name)}</div>
+    ${meta}
     <div class="bigrow">
       <div class="pcard cut"><b>${s.tours}</b><span>турниров</span></div>
       <div class="pcard cut"><b>${s.w}–${s.l}</b><span>матчи В–П</span></div>
@@ -1374,6 +1394,69 @@ function loadSB() {
   return sbLoading;
 }
 function setLive(s) { if (liveStatus !== s) { liveStatus = s; renderTopbar(); } }
+
+/* ===== роли: админ (пароль организатора) хранится локально ===== */
+let rcSecret = localStorage.getItem('rc_secret') || null;
+function isAdmin() { return !!rcSecret; }
+function persistLocal() { try { localStorage.setItem(LS_KEY, JSON.stringify(DB)); } catch (e) {} }
+async function adminLoginModal() {
+  if (isAdmin()) {
+    if (await uiConfirm('Выйти из режима администратора?', { title: 'Админ', ok: 'Выйти' })) {
+      rcSecret = null; localStorage.removeItem('rc_secret'); renderTopbar(); render(); toast('Вышел из админки', '🔒');
+    }
+    return;
+  }
+  const pass = await uiPrompt('Пароль организатора', '');
+  if (!pass) return;
+  try {
+    await loadSB();
+    const { data, error } = await sb.rpc('rc_check', { p_secret: pass });
+    if (error) throw error;
+    if (data === true) {
+      rcSecret = pass; localStorage.setItem('rc_secret', pass);
+      renderTopbar(); render(); toast('Вход администратора', '🔓', true);
+    } else uiAlert('Неверный пароль организатора.');
+  } catch (e) { uiAlert('Нет связи с базой — проверь интернет.'); }
+}
+
+/* ===== общий реестр игроков в Supabase ===== */
+function playerFromRow(r) {
+  return { id: r.id, name: r.name, nick: r.nick || '', mmr: r.mmr, phone: r.phone || '',
+    mmrHistory: Array.isArray(r.mmr_history) ? r.mmr_history : [], note: r.note || '',
+    account: r.account || null, updatedAt: r.updated_at ? Date.parse(r.updated_at) : 0 };
+}
+function playerToPayload(p) {
+  return { id: p.id, name: p.name, nick: p.nick || null, mmr: p.mmr == null ? null : p.mmr,
+    mmrHistory: p.mmrHistory || [], note: p.note || null, phone: p.phone || null, account: p.account || null };
+}
+let regSyncing = false;
+async function regLoad() {
+  regSyncing = true; if (view.screen === 'players') renderTopbar();
+  try {
+    await loadSB();
+    const { data, error } = await sb.from('players').select('*');
+    if (error) throw error;
+    DB.players = (data || []).map(playerFromRow);
+    persistLocal();
+    regSyncing = false;
+    if (view.screen === 'players') render();
+    return true;
+  } catch (e) {
+    regSyncing = false;
+    if (view.screen === 'players') { renderTopbar(); toast('Нет связи с базой — показана сохранённая копия', '⚠️'); }
+    return false;
+  }
+}
+async function regUpsertRemote(p) {
+  await loadSB();
+  const { error } = await sb.rpc('rc_upsert_player', { p_secret: rcSecret, p: playerToPayload(p) });
+  if (error) throw error;
+}
+async function regDeleteRemote(id) {
+  await loadSB();
+  const { error } = await sb.rpc('rc_delete_player', { p_secret: rcSecret, p_id: id });
+  if (error) throw error;
+}
 function serializeShared(t) {
   const c = Object.assign({}, t);
   delete c.share;                       /* ключ судьи наружу не уходит */
@@ -2059,6 +2142,8 @@ function renderTopbar() {
       : view.screen === 'players'
       ? `<button class="btn sm ghost" data-action="home">← На главную</button>`
       : `${addBtn}<button class="btn sm ghost" data-action="home">← Все турниры</button>`}
+    ${view.screen === 'home' || view.screen === 'players'
+      ? `<button class="btn sm icon ghost" data-action="adminlogin" data-tip="${isAdmin() ? 'Администратор — выйти' : 'Вход администратора'}">${isAdmin() ? '🔓' : '🔒'}</button>` : ''}
     <button class="btn sm icon ghost" data-action="mute" data-tip="${soundOn ? 'Звук включён' : 'Звук выключен'}">${soundOn ? '🔊' : '🔇'}</button>
     <button class="btn sm icon ghost" data-action="help" data-tip="Справка">❔</button>
     ${view.screen === 'home' ? `<button class="btn primary sm" data-action="new">+ Новый турнир</button>` : ''}
@@ -2175,20 +2260,23 @@ function regTitles(pid) {
   return g;
 }
 function screenPlayers() {
+  const admin = isAdmin();
   const list = regPlayers();
   const rows = list.map(p => {
     const peak = peakMmr(p), titles = regTitles(p.id);
     const trend = peak > (p.mmr || 0) ? `<span class="ppeak" data-tip="Пиковый MMR за историю">пик ${peak}</span>` : '';
     const tt = titles ? `<span class="ptitle" data-tip="Побед в турнирах">🏆 ${titles}</span>` : '';
+    const wa = p.phone ? `<button class="mini wa" data-action="wa" data-phone="${esc(p.phone)}" data-tip="Написать в WhatsApp">🟢</button>` : '';
+    const tools = admin ? `<span class="ptools">
+        <button class="mini" data-action="pedit" data-pid="${p.id}" data-tip="Изменить">✎</button>
+        <button class="mini del" data-action="pregdel" data-pid="${p.id}" data-tip="Удалить из базы">✕</button>
+      </span>` : '';
     return `<div class="prow cut" data-action="pprofile" data-pid="${p.id}" data-search="${esc((p.name + ' ' + (p.nick || '')).toLowerCase())}" data-tip="Открыть профиль">
       ${avatarByName(p.nick || p.name)}
       <div class="pcol"><span class="pnm">${esc(p.name)}</span>${p.nick ? `<span class="pnk">@${esc(p.nick)}</span>` : ''}</div>
       ${tt}${trend}
       <span class="pmmr">${p.mmr != null ? p.mmr : '—'}<small>MMR</small></span>
-      <span class="ptools">
-        <button class="mini" data-action="pedit" data-pid="${p.id}" data-tip="Изменить">✎</button>
-        <button class="mini del" data-action="pregdel" data-pid="${p.id}" data-tip="Удалить из базы">✕</button>
-      </span>
+      ${wa}${tools}
     </div>`;
   }).join('');
   return `<div class="regwrap">
@@ -2196,10 +2284,11 @@ function screenPlayers() {
       <h2>База игроков</h2><span class="regcount">${DB.players.length}</span>
       <span style="flex:1"></span>
       <input id="pSearch" class="regsearch" placeholder="Поиск по имени или нику…">
-      <button class="btn primary sm" data-action="pedit" data-tip="Добавить нового игрока">＋ Игрок</button>
+      ${admin ? `<button class="btn primary sm" data-action="pedit" data-tip="Добавить нового игрока">＋ Игрок</button>` : ''}
     </div>
+    ${!admin ? `<div class="regnote">👁 Режим просмотра. Добавляет и меняет игроков администратор — <b data-action="adminlogin" style="cursor:pointer;color:var(--gold2)">войти</b>.</div>` : ''}
     ${list.length ? `<div class="reglist">${rows}</div>`
-      : `<div class="empty"><span class="big">🧩</span>База пустая — добавь игроков кнопкой <b>«＋ Игрок»</b>. Дальше сможешь набирать их в турниры в один клик.</div>`}
+      : `<div class="empty"><span class="big">🧩</span>${admin ? 'База пустая — добавь игроков кнопкой <b>«＋ Игрок»</b>.' : 'В базе пока никого.'}</div>`}
   </div>`;
 }
 function playerEditModal(pid) {
@@ -2214,6 +2303,8 @@ function playerEditModal(pid) {
       <input id="peNick" placeholder="azek" value="${existing && existing.nick ? esc(existing.nick) : ''}">
       <label class="flbl">Текущий MMR</label>
       <input id="peMmr" type="number" inputmode="numeric" placeholder="6200" value="${existing && existing.mmr != null ? existing.mmr : ''}">
+      <label class="flbl">Телефон <span class="note">(для связи в WhatsApp)</span></label>
+      <input id="pePhone" inputmode="tel" placeholder="+7 700 000 00 00" value="${existing && existing.phone ? esc(existing.phone) : ''}">
       <label class="flbl">Заметка <span class="note">(необязательно)</span></label>
       <input id="peNote" placeholder="кор/мид, играет по выходным…" value="${existing && existing.note ? esc(existing.note) : ''}">
       <label class="flbl">История MMR <span class="note">(старые значения, пик)</span></label>
@@ -2250,24 +2341,35 @@ function playerEditModal(pid) {
   ov.querySelector('#peCancel').onclick = () => closeModal(ov);
   ov.onclick = e => { if (e.target === ov) closeModal(ov); };
   if (existing) ov.querySelector('#peDel').onclick = async () => {
+    if (!isAdmin()) { uiAlert('Удалять игроков может только администратор.'); return; }
     if (await uiConfirm(`Удалить ${existing.name} из базы игроков?`, { title: 'Удалить игрока?', ok: 'Удалить', danger: true })) {
-      DB.players = DB.players.filter(p => p.id !== existing.id); save(); closeModal(ov); render(); toast('Игрок удалён из базы');
+      try { await regDeleteRemote(existing.id); closeModal(ov); await regLoad(); toast('Игрок удалён из базы'); }
+      catch (e) { uiAlert('Не удалилось — проверь связь и пароль организатора.'); }
     }
   };
-  ov.querySelector('#peSave').onclick = () => {
+  ov.querySelector('#peSave').onclick = async () => {
     const name = ov.querySelector('#peName').value.trim();
     if (!name) { ov.querySelector('#peName').focus(); return; }
-    const nick = ov.querySelector('#peNick').value.trim();
+    if (!isAdmin()) { uiAlert('Добавлять и менять игроков может только администратор. Войди по паролю организатора (🔒 в шапке).'); return; }
     const mmrRaw = ov.querySelector('#peMmr').value.trim();
-    const mmr = mmrRaw === '' ? null : parseInt(mmrRaw, 10);
-    const note = ov.querySelector('#peNote').value.trim();
-    hist.sort((a, b) => b.v - a.v);
-    if (existing) {
-      Object.assign(existing, { name, nick, mmr, note, mmrHistory: hist, updatedAt: Date.now() });
-    } else {
-      DB.players.push({ id: uid(), name, nick, mmr, note, mmrHistory: hist, createdAt: Date.now(), updatedAt: Date.now() });
+    const p = {
+      id: existing ? existing.id : uid(),
+      name,
+      nick: ov.querySelector('#peNick').value.trim(),
+      mmr: mmrRaw === '' ? null : parseInt(mmrRaw, 10),
+      phone: ov.querySelector('#pePhone').value.trim(),
+      note: ov.querySelector('#peNote').value.trim(),
+      mmrHistory: hist.slice().sort((a, b) => b.v - a.v),
+      account: existing ? existing.account : null
+    };
+    const btn = ov.querySelector('#peSave'); btn.disabled = true; btn.textContent = 'Сохранение…';
+    try {
+      await regUpsertRemote(p); closeModal(ov); await regLoad();
+      toast(existing ? 'Сохранено' : 'Игрок добавлен', '✓');
+    } catch (e) {
+      btn.disabled = false; btn.textContent = 'Сохранить';
+      uiAlert('Не сохранилось. Проверь связь и пароль организатора.');
     }
-    save(); closeModal(ov); render(); toast(existing ? 'Сохранено' : 'Игрок добавлен', '✓');
   };
   setTimeout(() => { const n = ov.querySelector('#peName'); if (n) n.focus(); }, 30);
 }
@@ -2729,13 +2831,17 @@ document.addEventListener('click', async e => {
     updateTimerUI();
   }
   else if (a === 'pstats') showPlayerStats(el.dataset.name);
-  else if (a === 'players') { view = { screen: 'players', tid: null }; render(); }
-  else if (a === 'pedit') { playerEditModal(el.dataset.pid || null); }
+  else if (a === 'players') { view = { screen: 'players', tid: null }; render(); regLoad(); }
+  else if (a === 'adminlogin') { adminLoginModal(); }
+  else if (a === 'pedit') { if (isAdmin()) playerEditModal(el.dataset.pid || null); }
   else if (a === 'pprofile') { const p = regById(el.dataset.pid); if (p) showPlayerStats(p.name); }
+  else if (a === 'wa') { const ph = (el.dataset.phone || '').replace(/[^\d]/g, ''); if (ph) window.open('https://wa.me/' + ph, '_blank', 'noopener'); }
   else if (a === 'pregdel') {
+    if (!isAdmin()) return;
     const p = regById(el.dataset.pid);
     if (p && await uiConfirm(`Удалить ${p.name} из базы игроков?`, { title: 'Удалить игрока?', ok: 'Удалить', danger: true })) {
-      DB.players = DB.players.filter(x => x.id !== p.id); save(); render(); toast('Игрок удалён из базы');
+      try { await regDeleteRemote(p.id); await regLoad(); toast('Игрок удалён из базы'); }
+      catch (e) { uiAlert('Не удалилось — проверь связь и пароль организатора.'); }
     }
   }
   else if (a === 'share') { if (t) shareFlow(t); }
