@@ -119,7 +119,8 @@ grant execute on function public.rc_check(text)               to anon;
 -- ЧАСТЬ 2. Вход игроков (логины) + статус LFT «ищу команду»
 -- ============================================================
 
-create extension if not exists pgcrypto;   -- для хеширования паролей (crypt/gen_salt)
+-- pgcrypto в Supabase живёт в схеме extensions; функции ниже ищут его там (search_path).
+create extension if not exists pgcrypto with schema extensions;   -- crypt/gen_salt
 
 -- LFT-поля на игроке (читаются публично вместе с профилем)
 alter table public.players add column if not exists lft      boolean not null default false;
@@ -137,7 +138,7 @@ alter table public.player_auth enable row level security;
 
 -- Админ включает/меняет вход игроку (ник + простой пароль)
 create or replace function public.rc_set_login(p_secret text, p_id text, p_username text, p_password text)
-returns void language plpgsql security definer set search_path = public as $$
+returns void language plpgsql security definer set search_path = public, extensions as $$
 begin
   if not public.rc_check(p_secret) then raise exception 'forbidden'; end if;
   insert into public.player_auth(player_id, username, pass_hash, updated_at)
@@ -162,7 +163,7 @@ $$;
 
 -- Вход игрока: ник + пароль -> его player_id (или ошибка)
 create or replace function public.rc_login(p_username text, p_password text)
-returns text language plpgsql security definer set search_path = public as $$
+returns text language plpgsql security definer set search_path = public, extensions as $$
 declare pid text;
 begin
   select player_id into pid from public.player_auth
@@ -173,7 +174,7 @@ end; $$;
 
 -- Игрок ставит/снимает LFT (авторизуется своим ником+паролем)
 create or replace function public.rc_set_lft(p_username text, p_password text, p_on boolean, p_note text)
-returns void language plpgsql security definer set search_path = public as $$
+returns void language plpgsql security definer set search_path = public, extensions as $$
 declare pid text;
 begin
   select player_id into pid from public.player_auth
