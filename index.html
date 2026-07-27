@@ -306,6 +306,9 @@ tr[data-pid] td:nth-child(2){cursor:grab}
 .coach .tx{flex:1;font-size:13.5px}
 .coach .tx b{color:var(--teal)}
 .coach .tx .krow{margin-top:7px;display:flex;gap:15px;flex-wrap:wrap;color:var(--muted);font-size:12.5px}
+.coach.onboard{--bl:linear-gradient(135deg,var(--gold2),var(--gold-deep));--bg2:linear-gradient(135deg,rgba(212,175,55,.08),var(--panel) 60%);margin:18px 0 4px}
+.coach.onboard .tx b{color:var(--gold2)}
+.coach.onboard .tx{line-height:1.55}
 
 /* ================= groups ================= */
 .gwrap{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,340px),1fr));gap:18px;margin-top:16px}
@@ -1257,13 +1260,11 @@ function toast(msg, icon = '✓', gold = false) {
   requestAnimationFrame(() => el.classList.add('on'));
   setTimeout(() => { el.classList.remove('on'); setTimeout(() => el.remove(), 280); }, 2700);
 }
-let tipEl = null, tipFor = null;
-document.addEventListener('mouseover', e => {
-  if (drag && drag.started) return;
-  const el = e.target.closest('[data-tip]');
+let tipEl = null, tipFor = null, tipTimer = null, tipSticky = false;
+function showTipFor(el) {
   if (el === tipFor) return;
   hideTip();
-  if (!el) return;
+  if (!el || !el.dataset.tip) return;
   tipFor = el;
   tipEl = document.createElement('div');
   tipEl.className = 'tip';
@@ -1277,9 +1278,23 @@ document.addEventListener('mouseover', e => {
   tipEl.style.left = x + 'px';
   tipEl.style.top = y + 'px';
   requestAnimationFrame(() => tipEl && tipEl.classList.add('on'));
+}
+document.addEventListener('mouseover', e => {
+  if (drag && drag.started) return;
+  showTipFor(e.target.closest('[data-tip]'));
 });
-function hideTip() { if (tipEl) { tipEl.remove(); tipEl = null; } tipFor = null; }
-document.addEventListener('click', hideTip, true);
+// тач: подсказка по тапу, автоскрытие (чтобы иконки были понятны на телефоне)
+document.addEventListener('pointerdown', e => {
+  if (e.pointerType !== 'touch') return;
+  const el = e.target.closest('[data-tip]');
+  if (!el) return;
+  tipSticky = true;
+  showTipFor(el);
+  clearTimeout(tipTimer);
+  tipTimer = setTimeout(hideTip, 1700);
+}, true);
+function hideTip() { clearTimeout(tipTimer); tipSticky = false; if (tipEl) { tipEl.remove(); tipEl = null; } tipFor = null; }
+document.addEventListener('click', () => { if (tipSticky) { tipSticky = false; return; } hideTip(); }, true);
 document.addEventListener('scroll', hideTip, true);
 
 function confetti() {
@@ -2878,7 +2893,14 @@ function screenHome() {
         <span class="hofmed">${r.g ? `🥇×${r.g}` : ''} ${r.s ? `🥈×${r.s}` : ''} ${r.b ? `🥉×${r.b}` : ''}</span>
       </div>`).join('')}
     </div>` : '';
-  return `<div class="hero">
+  const onboard = !localStorage.getItem('rc_onboard') ? `<div class="coach cut onboard">
+      <span class="ic">👋</span>
+      <span class="tx"><b>Это Random Cup — турниры и комьюнити Жаркента.</b><br>
+        <b>🎮 Лобби</b> — собрать катку и подать заявку · <b>👥 Игроки</b> — база: MMR, позиции, кто ищет команду · <b>+ Новый турнир</b> — сетки и группы.<br>
+        Организатор входит по паролю (<b>🔒 Войти</b>) и ведёт базу; игрокам вход выдаёт он.</span>
+      <button class="btn sm" data-action="onboardoff">Понятно</button>
+    </div>` : '';
+  return `${onboard}<div class="hero">
       ${SKYLINE}
       <div class="eyebrow">Zharkent 🇰🇿</div>
       <h1>Random Cup</h1>
@@ -2934,29 +2956,6 @@ function screenCreate() {
       </div>
       <div id="capInfo" class="capinfo"></div>
     </div>
-    <div class="frow inline">
-      <label class="chk" data-tip="Суммарный MMR команды не должен превышать лимит. Пусто/0 — без лимита. MMR берётся из базы игроков по имени/нику.">Лимит MMR команды:&nbsp;<input id="cCap" type="number" inputmode="numeric" placeholder="без лимита" style="width:140px"></label>
-    </div>
-    <div class="frow inline" id="optBO">
-      <label class="chk hidden" id="boGroupWrap" data-tip="До скольких побед идёт матч в группе / лиге"><span id="boGroupLbl">Группа</span>:&nbsp;<select id="cBoGroup">
-        <option value="1">1 игра</option>
-        <option value="3">BO3</option>
-        <option value="5">BO5</option>
-        <option value="7">BO7</option>
-      </select></label>
-      <label class="chk" id="boPoWrap" data-tip="До скольких побед идут матчи плей-офф">Плей-офф:&nbsp;<select id="cBoPo">
-        <option value="1">1 игра</option>
-        <option value="3">BO3</option>
-        <option value="5">BO5</option>
-        <option value="7">BO7</option>
-      </select></label>
-      <label class="chk" id="boFinalWrap" data-tip="До скольких побед идёт финал">Финал:&nbsp;<select id="cBoFinal">
-        <option value="1">1 игра</option>
-        <option value="3">BO3</option>
-        <option value="5">BO5</option>
-        <option value="7">BO7</option>
-      </select></label>
-    </div>
     <div class="frow inline" id="optThird">
       <label class="chk"><input type="checkbox" id="cThird" checked> Матч за 3-е место</label>
     </div>
@@ -2967,8 +2966,36 @@ function screenCreate() {
       </select></label>
       <span class="note">Проходят дальше — выберешь, когда группы доиграют. Раскидка по группам — «змейкой», чтобы сильные разошлись.</span>
     </div>
-    <div class="frow inline hidden" id="optDraws">
-      <label class="chk" data-tip="Разрешить ничьи в матчах группы; таблица считается на очки (победа 3, ничья 1, поражение 0)"><input type="checkbox" id="cDraws"> Ничьи и очки <span class="note" style="margin-left:4px">(3 / 1 / 0)</span></label>
+    <div class="frow" style="margin-top:4px">
+      <button type="button" class="btn sm ghost" data-action="advtoggle" id="advBtn" data-tip="Формат матчей (BO), лимит MMR, ничьи/очки">⚙ Дополнительно ▾</button>
+    </div>
+    <div id="advOpts" class="advopts hidden">
+      <div class="frow inline">
+        <label class="chk" data-tip="Суммарный MMR команды не должен превышать лимит. Пусто/0 — без лимита. MMR берётся из базы игроков по имени/нику.">Лимит MMR команды:&nbsp;<input id="cCap" type="number" inputmode="numeric" placeholder="без лимита" style="width:140px"></label>
+      </div>
+      <div class="frow inline" id="optBO">
+        <label class="chk hidden" id="boGroupWrap" data-tip="До скольких побед идёт матч в группе / лиге"><span id="boGroupLbl">Группа</span>:&nbsp;<select id="cBoGroup">
+          <option value="1">1 игра</option>
+          <option value="3">BO3</option>
+          <option value="5">BO5</option>
+          <option value="7">BO7</option>
+        </select></label>
+        <label class="chk" id="boPoWrap" data-tip="До скольких побед идут матчи плей-офф">Плей-офф:&nbsp;<select id="cBoPo">
+          <option value="1">1 игра</option>
+          <option value="3">BO3</option>
+          <option value="5">BO5</option>
+          <option value="7">BO7</option>
+        </select></label>
+        <label class="chk" id="boFinalWrap" data-tip="До скольких побед идёт финал">Финал:&nbsp;<select id="cBoFinal">
+          <option value="1">1 игра</option>
+          <option value="3">BO3</option>
+          <option value="5">BO5</option>
+          <option value="7">BO7</option>
+        </select></label>
+      </div>
+      <div class="frow inline hidden" id="optDraws">
+        <label class="chk" data-tip="Разрешить ничьи в матчах группы; таблица считается на очки (победа 3, ничья 1, поражение 0)"><input type="checkbox" id="cDraws"> Ничьи и очки <span class="note" style="margin-left:4px">(3 / 1 / 0)</span></label>
+      </div>
     </div>
     <div class="frow" style="margin-top:26px">
       <button type="submit" class="btn primary">Создать турнир 🚀</button>
@@ -3252,6 +3279,7 @@ document.addEventListener('click', async e => {
   else if (a === 'new') { view = { screen: 'create', tid: null }; render(); regLoad(); }
   else if (a === 'help') showHelp();
   else if (a === 'coachoff') { localStorage.setItem('turnir_coach2', '1'); render(); }
+  else if (a === 'onboardoff') { localStorage.setItem('rc_onboard', '1'); render(); }
   else if (a === 'open') { view = { screen: 'tour', tid: el.dataset.tid }; render(); }
   else if (a === 'del') {
     const tt = DB.tournaments.find(x => x.id === el.dataset.tid);
@@ -3382,6 +3410,11 @@ document.addEventListener('click', async e => {
   else if (a === 'rematch') {
     const src = DB.tournaments.find(x => x.id === el.dataset.tid);
     if (src) rematch(src);
+  }
+  else if (a === 'advtoggle') {
+    const box = document.getElementById('advOpts'); if (!box) return;
+    const collapsed = box.classList.toggle('hidden');
+    el.textContent = '⚙ Дополнительно ' + (collapsed ? '▾' : '▴');
   }
   else if (a === 'shufflecreate') {
     const ta = document.getElementById('cPlayers');
