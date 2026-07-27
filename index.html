@@ -1226,6 +1226,10 @@ function openModal(html, wide) {
   ov.innerHTML = `<div class="modal cut ${wide ? 'wide' : ''}"><div class="minner">${html}</div></div>`;
   document.body.appendChild(ov);
   requestAnimationFrame(() => ov.classList.add('on'));
+  // фон закрывает окно только если нажатие НАЧАЛОСЬ на фоне (а не выделение текста
+  // из поля, отпущенное на фоне) — иначе окно закрывалось при выделении текста
+  ov._downSelf = false;
+  ov.addEventListener('pointerdown', e => { ov._downSelf = e.target === ov; });
   return ov;
 }
 function closeModal(ov) {
@@ -1249,7 +1253,7 @@ function uiConfirm(msg, opts = {}) {
     const done = v => { closeModal(ov); document.removeEventListener('keydown', key); res(v); };
     ov.querySelector('#mOk').onclick = () => done(true);
     ov.querySelector('#mCancel').onclick = () => done(false);
-    ov.onclick = e => { if (e.target === ov) done(false); };
+    ov.onclick = e => { if (e.target === ov && ov._downSelf) done(false); };
     const key = e => { if (e.key === 'Escape') done(false); if (e.key === 'Enter') done(true); };
     document.addEventListener('keydown', key);
     ov.querySelector('#mOk').focus();
@@ -1268,7 +1272,7 @@ function uiPrompt(title, value = '', placeholder = '') {
     const done = v => { closeModal(ov); res(v); };
     ov.querySelector('#mOk').onclick = () => done(inp.value.trim() || null);
     ov.querySelector('#mCancel').onclick = () => done(null);
-    ov.onclick = e => { if (e.target === ov) done(null); };
+    ov.onclick = e => { if (e.target === ov && ov._downSelf) done(null); };
     inp.addEventListener('keydown', e => {
       if (e.key === 'Enter') done(inp.value.trim() || null);
       if (e.key === 'Escape') done(null);
@@ -1282,7 +1286,7 @@ function uiAlert(msg) {
     <div class="mbody">${esc(msg)}</div>
     <div class="mrow"><button class="btn primary" id="mOk">Понятно</button></div>`);
   ov.querySelector('#mOk').onclick = () => closeModal(ov);
-  ov.onclick = e => { if (e.target === ov) closeModal(ov); };
+  ov.onclick = e => { if (e.target === ov && ov._downSelf) closeModal(ov); };
   ov.querySelector('#mOk').focus();
 }
 function toast(msg, icon = '✓', gold = false) {
@@ -1468,7 +1472,7 @@ function showPlayerStats(name) {
     <div class="mrow" style="margin-top:14px"><button class="btn primary" id="mOk">Закрыть</button></div>
   </div>`);
   ov.querySelector('#mOk').onclick = () => closeModal(ov);
-  ov.onclick = e => { if (e.target === ov) closeModal(ov); };
+  ov.onclick = e => { if (e.target === ov && ov._downSelf) closeModal(ov); };
 }
 
 /* ================= actions ================= */
@@ -1582,7 +1586,7 @@ async function adminLoginModal() {
       <button class="btn" id="asPlayer">🎮 Я игрок</button>
       <div class="note" style="margin-top:4px">Зрителям вход не нужен — всё видно и так.</div>
     </div>`);
-  ov.onclick = e => { if (e.target === ov) closeModal(ov); };
+  ov.onclick = e => { if (e.target === ov && ov._downSelf) closeModal(ov); };
   ov.querySelector('#asAdmin').onclick = () => { closeModal(ov); adminLogin(); };
   ov.querySelector('#asPlayer').onclick = () => { closeModal(ov); playerLogin(); };
 }
@@ -1748,7 +1752,7 @@ function showShareModal(t) {
     toast('Ссылка скопирована', '📋');
   });
   ov.querySelector('#mOk').onclick = () => closeModal(ov);
-  ov.onclick = e => { if (e.target === ov) closeModal(ov); };
+  ov.onclick = e => { if (e.target === ov && ov._downSelf) closeModal(ov); };
   const un = ov.querySelector('#mUnshare');
   if (un) un.onclick = async () => {
     closeModal(ov);
@@ -2604,7 +2608,7 @@ function playerEditModal(pid) {
   ov.querySelector('#peHAdd').onclick = addHist;
   ov.querySelector('#peHN').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); addHist(); } });
   ov.querySelector('#peCancel').onclick = () => closeModal(ov);
-  ov.onclick = e => { if (e.target === ov) closeModal(ov); };
+  ov.onclick = e => { if (e.target === ov && ov._downSelf) closeModal(ov); };
   if (existing) ov.querySelector('#peDel').onclick = async () => {
     if (!isAdmin()) { uiAlert('Удалять игроков может только администратор.'); return; }
     if (await uiConfirm(`Удалить ${existing.name} из базы игроков?`, { title: 'Удалить игрока?', ok: 'Удалить', danger: true })) {
@@ -2650,7 +2654,7 @@ function credsModal(user, pass) {
     </div>
     <div class="mrow"><span style="flex:1"></span><button class="btn primary" id="cOk">Понятно</button></div>`);
   ov.querySelector('#cOk').onclick = () => closeModal(ov);
-  ov.onclick = e => { if (e.target === ov) closeModal(ov); };
+  ov.onclick = e => { if (e.target === ov && ov._downSelf) closeModal(ov); };
 }
 async function manageLoginModal(pid) {
   const p = regById(pid); if (!p || !isAdmin()) return;
@@ -2670,7 +2674,7 @@ async function manageLoginModal(pid) {
       <button class="btn primary" id="mlGen">${has ? 'Новый пароль' : 'Включить вход'}</button>
     </div>`);
   ov.querySelector('#mlCancel').onclick = () => closeModal(ov);
-  ov.onclick = e => { if (e.target === ov) closeModal(ov); };
+  ov.onclick = e => { if (e.target === ov && ov._downSelf) closeModal(ov); };
   ov.querySelector('#mlGen').onclick = async () => {
     const user = ov.querySelector('#mlUser').value.trim();
     if (!user) { ov.querySelector('#mlUser').focus(); return; }
@@ -2715,7 +2719,7 @@ function lftModal(pid) {
   ov.querySelector('#lftOn').onclick = () => apply(true);
   if (p.lft) ov.querySelector('#lftOff').onclick = () => apply(false);
   ov.querySelector('#lftCancel').onclick = () => closeModal(ov);
-  ov.onclick = e => { if (e.target === ov) closeModal(ov); };
+  ov.onclick = e => { if (e.target === ov && ov._downSelf) closeModal(ov); };
 }
 function screenProfile(pid) {
   const p = regById(pid);
@@ -2866,7 +2870,7 @@ function lobbyCreateModal() {
     </div>
     <div class="mrow"><span style="flex:1"></span><button class="btn ghost" id="lbCancel">Отмена</button><button class="btn primary" id="lbSave">Создать</button></div>`);
   ov.querySelector('#lbCancel').onclick = () => closeModal(ov);
-  ov.onclick = e => { if (e.target === ov) closeModal(ov); };
+  ov.onclick = e => { if (e.target === ov && ov._downSelf) closeModal(ov); };
   ov.querySelector('#lbSave').onclick = async () => {
     const title = ov.querySelector('#lbTitle').value.trim();
     if (!title) { ov.querySelector('#lbTitle').focus(); return; }
@@ -2910,7 +2914,7 @@ function lobbyAddModal(lid) {
   };
   ov.querySelector('#laSearch').addEventListener('input', e => renderList(e.target.value));
   ov.querySelector('#laClose').onclick = () => closeModal(ov);
-  ov.onclick = e => { if (e.target === ov) closeModal(ov); };
+  ov.onclick = e => { if (e.target === ov && ov._downSelf) closeModal(ov); };
   (DB.players.length ? Promise.resolve() : regLoad()).then(() => renderList(''));
 }
 async function lobbyRpc(fn, args, okMsg) {
@@ -3148,7 +3152,7 @@ function infoEditModal() {
     </div>
     <div class="mrow"><span style="flex:1"></span><button class="btn ghost" id="tiCancel">Отмена</button><button class="btn primary" id="tiSave">Сохранить</button></div>`, true);
   ov.querySelector('#tiCancel').onclick = () => closeModal(ov);
-  ov.onclick = e => { if (e.target === ov) closeModal(ov); };
+  ov.onclick = e => { if (e.target === ov && ov._downSelf) closeModal(ov); };
   const v = id => ov.querySelector('#' + id).value.trim();
   ov.querySelector('#tiSave').onclick = () => {
     t.opts.info = { when: v('tiWhen'), venue: v('tiVenue'), prize: v('tiPrize'), entry: v('tiEntry'), slots: v('tiSlots'), contact: v('tiContact'), stream: v('tiStream'), rules: v('tiRules') };
@@ -3351,7 +3355,7 @@ function showHelp() {
     <div class="mrow" style="margin-top:16px"><button class="btn primary" id="mOk">Всё понятно</button></div>
   </div>`, true);
   ov.querySelector('#mOk').onclick = () => closeModal(ov);
-  ov.onclick = e => { if (e.target === ov) closeModal(ov); };
+  ov.onclick = e => { if (e.target === ov && ov._downSelf) closeModal(ov); };
 }
 
 /* ================= connector lines ================= */
@@ -3788,7 +3792,7 @@ function teamFillModal(lineIdx) {
   };
   ov.querySelector('#tfSearch').addEventListener('input', e => renderList(e.target.value));
   ov.querySelector('#tfClose').onclick = () => closeModal(ov);
-  ov.onclick = e => { if (e.target === ov) closeModal(ov); };
+  ov.onclick = e => { if (e.target === ov && ov._downSelf) closeModal(ov); };
   (DB.players.length ? Promise.resolve() : regLoad()).then(() => renderList(''));
 }
 function updatePCount() {
