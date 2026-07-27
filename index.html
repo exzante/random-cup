@@ -468,6 +468,33 @@ canvas.confetti{position:fixed;inset:0;z-index:100;pointer-events:none}
 .pmmrhist{display:flex;flex-wrap:wrap;gap:7px;margin:-2px 0 12px}
 .pmmrhist span{font-size:11px;color:var(--muted);background:var(--panel2);border:1px solid var(--line);padding:2px 9px}
 .pmmrhist b{color:var(--gold2);font-variant-numeric:tabular-nums}
+.posmini{display:inline-grid;place-items:center;width:16px;height:16px;margin-left:7px;font-size:10px;font-weight:800;color:var(--gold2);background:var(--gold-soft);border:1px solid var(--gold-deep);border-radius:4px;vertical-align:middle}
+.posbadge{font-size:11px;font-weight:600;color:var(--gold2);background:var(--gold-soft);border:1px solid var(--gold-deep);padding:2px 9px}
+/* страница профиля */
+.profwrap{max-width:760px;margin:20px auto 44px}
+.profhead{--c:14px;--bl:var(--line2);display:flex;align-items:center;gap:18px;padding:20px 22px;flex-wrap:wrap}
+.profhead .profid{flex:1;min-width:140px}
+.profhead h2{font-family:var(--disp);font-weight:600;font-size:24px;letter-spacing:.06em;text-transform:uppercase;color:var(--gold2);line-height:1.1}
+.profhead .profsub{display:flex;align-items:center;gap:10px;margin-top:6px;flex-wrap:wrap}
+.profhead .profsub .pnk{color:var(--muted);font-size:13px}
+.profmmr{text-align:right;line-height:1}
+.profmmr b{font-family:var(--disp);font-weight:700;font-size:30px;color:var(--gold2);font-variant-numeric:tabular-nums}
+.profmmr span{display:block;font-size:9px;letter-spacing:.16em;color:var(--dim);font-weight:600;margin-top:3px;text-transform:uppercase}
+.profact{display:flex;gap:8px;flex-wrap:wrap;width:100%;justify-content:flex-end}
+.profnote{--c:10px;--bl:var(--line);padding:11px 16px;margin-top:12px;color:var(--muted);font-size:13px}
+.profgrid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin:16px 0}
+.profgrid .pcard{--c:10px;--bl:var(--line);display:flex;flex-direction:column;align-items:center;gap:2px;padding:14px 8px}
+.profgrid .pcard b{font-family:var(--disp);font-weight:700;font-size:19px;color:var(--text)}
+.profgrid .pcard span{font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--dim)}
+.profsec{margin-top:22px}
+.profsec h3{font-family:var(--disp);font-weight:600;font-size:12px;letter-spacing:.26em;text-transform:uppercase;color:var(--gold2);margin-bottom:11px}
+.mmrtl{display:flex;flex-wrap:wrap;gap:9px}
+.mmrpt{--c:8px;--bl:var(--line);display:flex;flex-direction:column;padding:8px 14px;min-width:74px}
+.mmrpt b{font-family:var(--disp);font-weight:700;color:var(--gold2);font-size:16px;font-variant-numeric:tabular-nums}
+.mmrpt span{font-size:10.5px;color:var(--muted);margin-top:2px}
+.proftours{display:flex;flex-direction:column;gap:6px}
+.proftours .trow{display:flex;gap:10px;padding:8px 13px;background:var(--panel2);border:1px solid var(--line)}
+.proftours .trow .tn{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .prow{--c:10px;--bl:var(--line);display:flex;align-items:center;gap:12px;padding:11px 15px;cursor:pointer;transition:transform .12s}
 .prow:hover{transform:translateX(2px);--bl:var(--gold-deep)}
 .prow .pcol{display:flex;flex-direction:column;min-width:0;flex:1}
@@ -493,6 +520,10 @@ canvas.confetti{position:fixed;inset:0;z-index:100;pointer-events:none}
   .regwrap{margin:14px auto 40px}
   .regsearch{width:100%;order:5}
   .prow .ptools{opacity:1}
+  .profwrap{margin:14px auto 40px}
+  .profgrid{grid-template-columns:repeat(2,1fr)}
+  .profmmr{text-align:left}
+  .profact{justify-content:flex-start}
   .topbar{padding:8px 12px}
   .tbin{flex-wrap:wrap;gap:7px}
   .tbin .spacer{display:none}
@@ -1421,14 +1452,16 @@ async function adminLoginModal() {
 
 /* ===== общий реестр игроков в Supabase ===== */
 function playerFromRow(r) {
-  return { id: r.id, name: r.name, nick: r.nick || '', mmr: r.mmr, phone: r.phone || '',
+  return { id: r.id, name: r.name, nick: r.nick || '', mmr: r.mmr, phone: r.phone || '', pos: r.pos || '',
     mmrHistory: Array.isArray(r.mmr_history) ? r.mmr_history : [], note: r.note || '',
     account: r.account || null, updatedAt: r.updated_at ? Date.parse(r.updated_at) : 0 };
 }
 function playerToPayload(p) {
   return { id: p.id, name: p.name, nick: p.nick || null, mmr: p.mmr == null ? null : p.mmr,
-    mmrHistory: p.mmrHistory || [], note: p.note || null, phone: p.phone || null, account: p.account || null };
+    mmrHistory: p.mmrHistory || [], note: p.note || null, phone: p.phone || null, pos: p.pos || null, account: p.account || null };
 }
+const POS_LABELS = { '1': 'Керри (1)', '2': 'Мид (2)', '3': 'Оффлейн (3)', '4': 'Саппорт (4)', '5': 'Хард саппорт (5)' };
+function posLabel(pos) { return POS_LABELS[pos] || ''; }
 let regSyncing = false;
 async function regLoad() {
   regSyncing = true; if (view.screen === 'players') renderTopbar();
@@ -2076,6 +2109,7 @@ function render() {
   if (view.screen === 'home') app.innerHTML = screenHome();
   else if (view.screen === 'create') app.innerHTML = screenCreate();
   else if (view.screen === 'players') app.innerHTML = screenPlayers();
+  else if (view.screen === 'profile') app.innerHTML = screenProfile(view.pid);
   else app.innerHTML = screenTour();
   [...app.querySelectorAll('.bsec')].forEach((s, i) => {
     if (scrolls[i]) { s.scrollLeft = scrolls[i].l; s.scrollTop = scrolls[i].t; }
@@ -2141,6 +2175,8 @@ function renderTopbar() {
          <button class="btn sm ghost" data-action="import" data-tip="Загрузить турниры из файла">📂 Импорт</button>`
       : view.screen === 'players'
       ? `<button class="btn sm ghost" data-action="home">← На главную</button>`
+      : view.screen === 'profile'
+      ? `<button class="btn sm ghost" data-action="players">← К игрокам</button>`
       : `${addBtn}<button class="btn sm ghost" data-action="home">← Все турниры</button>`}
     ${view.screen === 'home' || view.screen === 'players'
       ? `<button class="btn sm icon ghost" data-action="adminlogin" data-tip="${isAdmin() ? 'Администратор — выйти' : 'Вход администратора'}">${isAdmin() ? '🔓' : '🔒'}</button>` : ''}
@@ -2271,9 +2307,11 @@ function screenPlayers() {
         <button class="mini" data-action="pedit" data-pid="${p.id}" data-tip="Изменить">✎</button>
         <button class="mini del" data-action="pregdel" data-pid="${p.id}" data-tip="Удалить из базы">✕</button>
       </span>` : '';
-    return `<div class="prow cut" data-action="pprofile" data-pid="${p.id}" data-search="${esc((p.name + ' ' + (p.nick || '')).toLowerCase())}" data-tip="Открыть профиль">
+    const pos = p.pos ? `<span class="posmini" data-tip="Позиция">${esc(p.pos)}</span>` : '';
+    const tip = [p.nick ? '@' + p.nick : '', p.mmr != null ? p.mmr + ' MMR' : '', posLabel(p.pos)].filter(Boolean).join(' · ') || 'Открыть профиль';
+    return `<div class="prow cut" data-action="pprofile" data-pid="${p.id}" data-search="${esc((p.name + ' ' + (p.nick || '')).toLowerCase())}" data-tip="${esc(tip)}">
       ${avatarByName(p.nick || p.name)}
-      <div class="pcol"><span class="pnm">${esc(p.name)}</span>${p.nick ? `<span class="pnk">@${esc(p.nick)}</span>` : ''}</div>
+      <div class="pcol"><span class="pnm">${esc(p.name)}${pos}</span>${p.nick ? `<span class="pnk">@${esc(p.nick)}</span>` : ''}</div>
       ${tt}${trend}
       <span class="pmmr">${p.mmr != null ? p.mmr : '—'}<small>MMR</small></span>
       ${wa}${tools}
@@ -2303,6 +2341,11 @@ function playerEditModal(pid) {
       <input id="peNick" placeholder="azek" value="${existing && existing.nick ? esc(existing.nick) : ''}">
       <label class="flbl">Текущий MMR</label>
       <input id="peMmr" type="number" inputmode="numeric" placeholder="6200" value="${existing && existing.mmr != null ? existing.mmr : ''}">
+      <label class="flbl">Позиция</label>
+      <select id="pePos">
+        <option value="">— не указана —</option>
+        ${['1', '2', '3', '4', '5'].map(n => `<option value="${n}" ${existing && existing.pos === n ? 'selected' : ''}>${POS_LABELS[n]}</option>`).join('')}
+      </select>
       <label class="flbl">Телефон <span class="note">(для связи в WhatsApp)</span></label>
       <input id="pePhone" inputmode="tel" placeholder="+7 700 000 00 00" value="${existing && existing.phone ? esc(existing.phone) : ''}">
       <label class="flbl">Заметка <span class="note">(необязательно)</span></label>
@@ -2358,6 +2401,7 @@ function playerEditModal(pid) {
       nick: ov.querySelector('#peNick').value.trim(),
       mmr: mmrRaw === '' ? null : parseInt(mmrRaw, 10),
       phone: ov.querySelector('#pePhone').value.trim(),
+      pos: ov.querySelector('#pePos').value,
       note: ov.querySelector('#peNote').value.trim(),
       mmrHistory: hist.slice().sort((a, b) => b.v - a.v),
       account: existing ? existing.account : null
@@ -2372,6 +2416,46 @@ function playerEditModal(pid) {
     }
   };
   setTimeout(() => { const n = ov.querySelector('#peName'); if (n) n.focus(); }, 30);
+}
+function screenProfile(pid) {
+  const p = regById(pid);
+  if (!p) { view = { screen: 'players', tid: null }; return screenPlayers(); }
+  const s = playerStats(p.name);
+  const wr = (s.w + s.l) ? Math.round(s.w / (s.w + s.l) * 100) : 0;
+  const peak = peakMmr(p);
+  const admin = isAdmin();
+  const hist = (p.mmrHistory || []).slice().sort((a, b) => b.v - a.v);
+  const medals = [s.g ? '🥇' + s.g : '', s.s ? '🥈' + s.s : '', s.b ? '🥉' + s.b : ''].filter(Boolean).join(' ') || '—';
+  return `<div class="profwrap">
+    <div class="profhead cut">
+      ${avatarByName(p.nick || p.name, true)}
+      <div class="profid">
+        <h2>${esc(p.name)}</h2>
+        <div class="profsub">
+          ${p.nick ? `<span class="pnk">@${esc(p.nick)}</span>` : ''}
+          ${p.pos ? `<span class="posbadge">${esc(posLabel(p.pos))}</span>` : ''}
+        </div>
+      </div>
+      <div class="profmmr"><b>${p.mmr != null ? p.mmr : '—'}</b><span>MMR${peak > (p.mmr || 0) ? ` · пик ${peak}` : ''}</span></div>
+      <div class="profact">
+        ${p.phone ? `<button class="btn sm" data-action="wa" data-phone="${esc(p.phone)}" data-tip="${esc(p.phone)}">🟢 WhatsApp</button>` : ''}
+        ${admin ? `<button class="btn sm ghost" data-action="pedit" data-pid="${p.id}">✎ Изменить</button>` : ''}
+      </div>
+    </div>
+    ${p.note ? `<div class="profnote cut">📝 ${esc(p.note)}</div>` : ''}
+    <div class="profgrid">
+      <div class="pcard cut"><b>${s.tours}</b><span>турниров</span></div>
+      <div class="pcard cut"><b>${s.w}–${s.l}</b><span>матчи В–П</span></div>
+      <div class="pcard cut"><b>${wr}%</b><span>винрейт</span></div>
+      <div class="pcard cut"><b>${medals}</b><span>медали</span></div>
+    </div>
+    ${hist.length ? `<div class="profsec"><h3>История MMR</h3>
+      <div class="mmrtl">${hist.map(h => `<div class="mmrpt cut"><b>${h.v}</b>${h.note ? `<span>${esc(h.note)}</span>` : ''}</div>`).join('')}</div></div>` : ''}
+    <div class="profsec"><h3>Турниры</h3>
+      ${s.rows.length ? `<div class="proftours">${s.rows.map(r => `<div class="trow"><span class="tn">${esc(r.tn)}</span><span>${r.res}</span></div>`).join('')}</div>`
+        : `<span class="note">Пока не участвовал в турнирах.</span>`}
+    </div>
+  </div>`;
 }
 function screenHome() {
   let totalP = 0, totalM = 0;
@@ -2834,7 +2918,7 @@ document.addEventListener('click', async e => {
   else if (a === 'players') { view = { screen: 'players', tid: null }; render(); regLoad(); }
   else if (a === 'adminlogin') { adminLoginModal(); }
   else if (a === 'pedit') { if (isAdmin()) playerEditModal(el.dataset.pid || null); }
-  else if (a === 'pprofile') { const p = regById(el.dataset.pid); if (p) showPlayerStats(p.name); }
+  else if (a === 'pprofile') { view = { screen: 'profile', pid: el.dataset.pid, tid: null }; render(); }
   else if (a === 'wa') { const ph = (el.dataset.phone || '').replace(/[^\d]/g, ''); if (ph) window.open('https://wa.me/' + ph, '_blank', 'noopener'); }
   else if (a === 'pregdel') {
     if (!isAdmin()) return;
