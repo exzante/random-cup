@@ -2023,9 +2023,10 @@ async function reseedFlow(t) {
 }
 /* реванш: новый турнир с теми же игроками */
 function rematch(src) {
-  const names = shuffleArr(Object.values(src.players).map(p => p.name));
+  const names = shuffleArr(Object.values(src.players).map(entryStr));   // entryStr сохраняет составы команд
   if (names.length < 2) { uiAlert('В турнире меньше двух игроков.'); return; }
-  createTournament(src.name.replace(/ · реванш.*$/, '') + ' · реванш', src.format, names, Object.assign({}, src.opts));
+  const opts = JSON.parse(JSON.stringify(src.opts || {}));              // копируем настройки целиком (BO, лимит, ничьи, инфо)
+  createTournament(src.name.replace(/ · реванш.*$/, '') + ' · реванш', src.format, names, opts);
 }
 async function deletePlayerFlow(t, pid) {
   const nm = pname(t, pid);
@@ -3019,6 +3020,7 @@ function screenCreate() {
       <textarea id="cPlayers" rows="8" placeholder="${createMode === 'teams' ? 'Тигры: Азамат, Ерлан&#10;Волки: Данияр, Санжар&#10;...' : 'Азамат&#10;Данияр&#10;Ерлан&#10;...'}"></textarea>
       <div style="display:flex;align-items:center;gap:12px;margin-top:8px">
         <div class="pcount" id="pCount" style="margin:0;flex:1"></div>
+        <button type="button" class="btn sm ghost" data-action="seedmmr" data-tip="Посеять по MMR из базы: сильные разведены (в сетке — по краям, в группах — «змейкой»)">📊 По рейтингу</button>
         <button type="button" class="btn sm ghost" data-action="shufflecreate" data-tip="Случайный порядок — случайный посев">🎲 Перемешать</button>
       </div>
       <div id="capInfo" class="capinfo"></div>
@@ -3565,6 +3567,16 @@ document.addEventListener('click', async e => {
     const box = document.getElementById('advOpts'); if (!box) return;
     const collapsed = box.classList.toggle('hidden');
     el.textContent = '⚙ Дополнительно ' + (collapsed ? '▾' : '▴');
+  }
+  else if (a === 'seedmmr') {
+    const ta = document.getElementById('cPlayers'); if (!ta) return;
+    const lines = ta.value.split('\n').map(s => s.trim()).filter(Boolean);
+    if (lines.length < 2) return;
+    const strength = s => { const e = parseEntry(s); return (e.members && e.members.length) ? e.members.reduce((a, m) => a + (regMmrOf(m) || 0), 0) : (regMmrOf(e.name) || 0); };
+    lines.sort((a, b) => strength(b) - strength(a));
+    ta.value = lines.join('\n');
+    updatePCount();
+    toast('Посев по рейтингу', '📊');
   }
   else if (a === 'shufflecreate') {
     const ta = document.getElementById('cPlayers');
