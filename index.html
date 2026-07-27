@@ -451,8 +451,38 @@ canvas.confetti{position:fixed;inset:0;z-index:100;pointer-events:none}
 .rrow:hover .rtools{display:inline-flex}
 .rempty{padding:18px;text-align:center;color:var(--dim);font-size:12.5px}
 
+/* ================= реестр игроков ================= */
+.regwrap{max-width:760px;margin:20px auto 40px}
+.reghead{display:flex;align-items:center;gap:12px;margin-bottom:18px;flex-wrap:wrap}
+.reghead h2{font-family:var(--disp);font-weight:600;font-size:20px;letter-spacing:.14em;text-transform:uppercase;color:var(--gold2)}
+.regcount{font-size:11px;font-weight:700;color:var(--dim);background:var(--panel2);border:1px solid var(--line);padding:2px 10px}
+.regsearch{width:min(260px,42vw)}
+.reglist{display:flex;flex-direction:column;gap:8px}
+.prow{--c:10px;--bl:var(--line);display:flex;align-items:center;gap:12px;padding:11px 15px;cursor:pointer;transition:transform .12s}
+.prow:hover{transform:translateX(2px);--bl:var(--gold-deep)}
+.prow .pcol{display:flex;flex-direction:column;min-width:0;flex:1}
+.prow .pnm{font-weight:700;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.prow .pnk{font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.prow .pmmr{font-family:var(--disp);font-weight:700;font-size:16px;color:var(--gold2);font-variant-numeric:tabular-nums;display:flex;flex-direction:column;align-items:flex-end;line-height:1;flex-shrink:0}
+.prow .pmmr small{font-size:8px;letter-spacing:.2em;color:var(--dim);font-weight:600;margin-top:2px}
+.prow .ppeak{font-size:10px;color:var(--muted);background:var(--panel2);border:1px solid var(--line);padding:2px 8px;white-space:nowrap;flex-shrink:0}
+.prow .ptitle{font-size:11px;color:var(--gold2);font-weight:700;white-space:nowrap;flex-shrink:0}
+.prow .ptools{display:inline-flex;gap:1px;opacity:0;transition:opacity .12s;flex-shrink:0}
+.prow:hover .ptools{opacity:1}
+.pedit{display:flex;flex-direction:column;gap:2px;text-align:left}
+.pedit .flbl{font-family:var(--disp);font-size:10px;font-weight:500;letter-spacing:.2em;text-transform:uppercase;color:var(--muted);margin:10px 0 3px}
+.pedit input{width:100%}
+.pehist{display:flex;flex-direction:column;gap:5px;margin-top:2px}
+.pehrow{display:flex;align-items:center;gap:9px;background:var(--panel2);border:1px solid var(--line);padding:5px 10px}
+.pehrow b{font-family:var(--disp);color:var(--gold2);font-variant-numeric:tabular-nums;min-width:52px}
+.pehrow span{flex:1;color:var(--muted);font-size:12px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pehrow .mini{margin-left:auto}
+.peaddrow{display:flex;gap:8px;margin-top:8px}
 @media (max-width:700px){
   .fmt3{grid-template-columns:1fr}
+  .regwrap{margin:14px auto 40px}
+  .regsearch{width:100%;order:5}
+  .prow .ptools{opacity:1}
   .topbar{padding:8px 12px}
   .tbin{flex-wrap:wrap;gap:7px}
   .tbin .spacer{display:none}
@@ -491,6 +521,7 @@ canvas.confetti{position:fixed;inset:0;z-index:100;pointer-events:none}
 @media (hover:none){
   .slot .tools{display:inline-flex}
   .grow-tools{opacity:1 !important}
+  .prow .ptools{opacity:1}
   .mini{padding:7px 9px;font-size:15px}
   .score{width:40px;padding:9px 0;font-size:15px}
   .gm .score{width:36px}
@@ -533,6 +564,7 @@ const LS_KEY = 'turnir_v1';
 let DB = null;
 try { DB = JSON.parse(localStorage.getItem(LS_KEY) || 'null'); } catch (e) { DB = null; }
 if (!DB || !Array.isArray(DB.tournaments)) DB = { tournaments: [] };
+if (!Array.isArray(DB.players)) DB.players = []; // общий реестр игроков (база знаний)
 
 let view = { screen: 'home', tid: null };
 let rosterOpen = false;
@@ -1960,6 +1992,7 @@ function render() {
   const scrolls = [...app.querySelectorAll('.bsec')].map(s => ({ l: s.scrollLeft, t: s.scrollTop }));
   if (view.screen === 'home') app.innerHTML = screenHome();
   else if (view.screen === 'create') app.innerHTML = screenCreate();
+  else if (view.screen === 'players') app.innerHTML = screenPlayers();
   else app.innerHTML = screenTour();
   [...app.querySelectorAll('.bsec')].forEach((s, i) => {
     if (scrolls[i]) { s.scrollLeft = scrolls[i].l; s.scrollTop = scrolls[i].t; }
@@ -2020,8 +2053,11 @@ function renderTopbar() {
     ${mid}
     <span class="spacer"></span>
     ${view.screen === 'home'
-      ? `<button class="btn sm ghost" data-action="export" data-tip="Скачать все турниры в JSON-файл">💾 Бэкап</button>
+      ? `<button class="btn sm ghost" data-action="players" data-tip="База игроков: имена, ники, MMR, история">👥 Игроки</button>
+         <button class="btn sm ghost" data-action="export" data-tip="Скачать все турниры в JSON-файл">💾 Бэкап</button>
          <button class="btn sm ghost" data-action="import" data-tip="Загрузить турниры из файла">📂 Импорт</button>`
+      : view.screen === 'players'
+      ? `<button class="btn sm ghost" data-action="home">← На главную</button>`
       : `${addBtn}<button class="btn sm ghost" data-action="home">← Все турниры</button>`}
     <button class="btn sm icon ghost" data-action="mute" data-tip="${soundOn ? 'Звук включён' : 'Звук выключен'}">${soundOn ? '🔊' : '🔇'}</button>
     <button class="btn sm icon ghost" data-action="help" data-tip="Справка">❔</button>
@@ -2120,6 +2156,121 @@ const SKYLINE = `<svg class="skyline" viewBox="0 0 1200 200" xmlns="http://www.w
   <path fill="rgba(212,175,55,.05)" d="M0 200 L0 170 L60 170 L60 158 L130 158 L130 172 L210 172 L210 150 L290 150 L290 168 L380 168 L380 152 L470 152 L470 170 L560 170 L560 145 L650 145 L650 165 L740 165 L740 150 L830 150 L830 170 L920 170 L920 155 L1010 155 L1010 172 L1100 172 L1100 160 L1200 160 L1200 200 Z"/>
 </svg>`;
 
+/* ================= реестр игроков (база знаний) ================= */
+function regPlayers() {
+  return DB.players.slice().sort((a, b) => (b.mmr || 0) - (a.mmr || 0) || a.name.localeCompare(b.name, 'ru'));
+}
+function regById(id) { return DB.players.find(p => p.id === id); }
+function regByNick(nick) { const k = (nick || '').trim().toLowerCase(); return k ? DB.players.find(p => (p.nick || '').toLowerCase() === k) : null; }
+function peakMmr(p) { return Math.max(p.mmr || 0, ...(p.mmrHistory || []).map(h => h.v || 0), 0); }
+function regTitles(pid) {
+  // сколько турниров выиграл зарегистрированный игрок (по совпадению имени)
+  const p = regById(pid); if (!p) return 0;
+  const key = p.name.toLowerCase();
+  let g = 0;
+  for (const t of DB.tournaments) {
+    const first = podium(t).first;
+    if (first && pname(t, first).toLowerCase() === key) g++;
+  }
+  return g;
+}
+function screenPlayers() {
+  const list = regPlayers();
+  const rows = list.map(p => {
+    const peak = peakMmr(p), titles = regTitles(p.id);
+    const trend = peak > (p.mmr || 0) ? `<span class="ppeak" data-tip="Пиковый MMR за историю">пик ${peak}</span>` : '';
+    const tt = titles ? `<span class="ptitle" data-tip="Побед в турнирах">🏆 ${titles}</span>` : '';
+    return `<div class="prow cut" data-action="pprofile" data-pid="${p.id}" data-search="${esc((p.name + ' ' + (p.nick || '')).toLowerCase())}" data-tip="Открыть профиль">
+      ${avatarByName(p.nick || p.name)}
+      <div class="pcol"><span class="pnm">${esc(p.name)}</span>${p.nick ? `<span class="pnk">@${esc(p.nick)}</span>` : ''}</div>
+      ${tt}${trend}
+      <span class="pmmr">${p.mmr != null ? p.mmr : '—'}<small>MMR</small></span>
+      <span class="ptools">
+        <button class="mini" data-action="pedit" data-pid="${p.id}" data-tip="Изменить">✎</button>
+        <button class="mini del" data-action="pregdel" data-pid="${p.id}" data-tip="Удалить из базы">✕</button>
+      </span>
+    </div>`;
+  }).join('');
+  return `<div class="regwrap">
+    <div class="reghead">
+      <h2>База игроков</h2><span class="regcount">${DB.players.length}</span>
+      <span style="flex:1"></span>
+      <input id="pSearch" class="regsearch" placeholder="Поиск по имени или нику…">
+      <button class="btn primary sm" data-action="pedit" data-tip="Добавить нового игрока">＋ Игрок</button>
+    </div>
+    ${list.length ? `<div class="reglist">${rows}</div>`
+      : `<div class="empty"><span class="big">🧩</span>База пустая — добавь игроков кнопкой <b>«＋ Игрок»</b>. Дальше сможешь набирать их в турниры в один клик.</div>`}
+  </div>`;
+}
+function playerEditModal(pid) {
+  const existing = pid ? regById(pid) : null;
+  const hist = existing && Array.isArray(existing.mmrHistory) ? existing.mmrHistory.map(h => ({ v: h.v, note: h.note || '' })) : [];
+  const ov = openModal(`
+    <div class="mtitle">${existing ? 'Игрок' : 'Новый игрок'}</div>
+    <div class="mbody pedit">
+      <label class="flbl">Имя</label>
+      <input id="peName" placeholder="Азамат" value="${existing ? esc(existing.name) : ''}">
+      <label class="flbl">Ник</label>
+      <input id="peNick" placeholder="azek" value="${existing && existing.nick ? esc(existing.nick) : ''}">
+      <label class="flbl">Текущий MMR</label>
+      <input id="peMmr" type="number" inputmode="numeric" placeholder="6200" value="${existing && existing.mmr != null ? existing.mmr : ''}">
+      <label class="flbl">Заметка <span class="note">(необязательно)</span></label>
+      <input id="peNote" placeholder="кор/мид, играет по выходным…" value="${existing && existing.note ? esc(existing.note) : ''}">
+      <label class="flbl">История MMR <span class="note">(старые значения, пик)</span></label>
+      <div id="peHist" class="pehist"></div>
+      <div class="peaddrow">
+        <input id="peHV" type="number" inputmode="numeric" placeholder="10000" style="width:108px">
+        <input id="peHN" placeholder="напр. «2022, пик»" style="flex:1;min-width:0">
+        <button class="btn sm ghost" id="peHAdd" type="button">＋</button>
+      </div>
+    </div>
+    <div class="mrow">
+      ${existing ? `<button class="btn sm danger" id="peDel">Удалить</button>` : ''}
+      <span style="flex:1"></span>
+      <button class="btn ghost" id="peCancel">Отмена</button>
+      <button class="btn primary" id="peSave">Сохранить</button>
+    </div>`, true);
+  const renderHist = () => {
+    const box = ov.querySelector('#peHist');
+    box.innerHTML = hist.length
+      ? hist.map((h, i) => `<div class="pehrow"><b>${h.v}</b><span>${esc(h.note || '')}</span><button class="mini del" data-hi="${i}" data-tip="Убрать">✕</button></div>`).join('')
+      : `<span class="note">Пока нет записей.</span>`;
+    box.querySelectorAll('button[data-hi]').forEach(b => b.onclick = () => { hist.splice(+b.dataset.hi, 1); renderHist(); });
+  };
+  renderHist();
+  const addHist = () => {
+    const v = parseInt(ov.querySelector('#peHV').value, 10);
+    if (!Number.isFinite(v)) { ov.querySelector('#peHV').focus(); return; }
+    hist.push({ v, note: ov.querySelector('#peHN').value.trim() });
+    ov.querySelector('#peHV').value = ''; ov.querySelector('#peHN').value = '';
+    renderHist(); ov.querySelector('#peHV').focus();
+  };
+  ov.querySelector('#peHAdd').onclick = addHist;
+  ov.querySelector('#peHN').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); addHist(); } });
+  ov.querySelector('#peCancel').onclick = () => closeModal(ov);
+  ov.onclick = e => { if (e.target === ov) closeModal(ov); };
+  if (existing) ov.querySelector('#peDel').onclick = async () => {
+    if (await uiConfirm(`Удалить ${existing.name} из базы игроков?`, { title: 'Удалить игрока?', ok: 'Удалить', danger: true })) {
+      DB.players = DB.players.filter(p => p.id !== existing.id); save(); closeModal(ov); render(); toast('Игрок удалён из базы');
+    }
+  };
+  ov.querySelector('#peSave').onclick = () => {
+    const name = ov.querySelector('#peName').value.trim();
+    if (!name) { ov.querySelector('#peName').focus(); return; }
+    const nick = ov.querySelector('#peNick').value.trim();
+    const mmrRaw = ov.querySelector('#peMmr').value.trim();
+    const mmr = mmrRaw === '' ? null : parseInt(mmrRaw, 10);
+    const note = ov.querySelector('#peNote').value.trim();
+    hist.sort((a, b) => b.v - a.v);
+    if (existing) {
+      Object.assign(existing, { name, nick, mmr, note, mmrHistory: hist, updatedAt: Date.now() });
+    } else {
+      DB.players.push({ id: uid(), name, nick, mmr, note, mmrHistory: hist, createdAt: Date.now(), updatedAt: Date.now() });
+    }
+    save(); closeModal(ov); render(); toast(existing ? 'Сохранено' : 'Игрок добавлен', '✓');
+  };
+  setTimeout(() => { const n = ov.querySelector('#peName'); if (n) n.focus(); }, 30);
+}
 function screenHome() {
   let totalP = 0, totalM = 0;
   DB.tournaments.forEach(t => {
@@ -2578,6 +2729,15 @@ document.addEventListener('click', async e => {
     updateTimerUI();
   }
   else if (a === 'pstats') showPlayerStats(el.dataset.name);
+  else if (a === 'players') { view = { screen: 'players', tid: null }; render(); }
+  else if (a === 'pedit') { playerEditModal(el.dataset.pid || null); }
+  else if (a === 'pprofile') { const p = regById(el.dataset.pid); if (p) showPlayerStats(p.name); }
+  else if (a === 'pregdel') {
+    const p = regById(el.dataset.pid);
+    if (p && await uiConfirm(`Удалить ${p.name} из базы игроков?`, { title: 'Удалить игрока?', ok: 'Удалить', danger: true })) {
+      DB.players = DB.players.filter(x => x.id !== p.id); save(); render(); toast('Игрок удалён из базы');
+    }
+  }
   else if (a === 'share') { if (t) shareFlow(t); }
   else if (a === 'mute') {
     soundOn = !soundOn;
@@ -2754,6 +2914,12 @@ function updatePCount() {
 }
 document.addEventListener('input', e => {
   if (e.target.id === 'cPlayers') updatePCount();
+  if (e.target.id === 'pSearch') {
+    const q = e.target.value.trim().toLowerCase();
+    document.querySelectorAll('.prow').forEach(el => {
+      el.style.display = (!q || (el.dataset.search || '').includes(q)) ? '' : 'none';
+    });
+  }
 });
 
 document.addEventListener('keydown', async e => {
