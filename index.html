@@ -812,7 +812,8 @@ function genGroupMatches(t, g) {
 function groupHasResults(t, g) { return groupMatches(t, g).some(m => m.winner); }
 function standings(t, g) {
   const st = {};
-  g.pids.forEach(p => { st[p] = { pid: p, w: 0, l: 0, sf: 0, sa: 0 }; });
+  const h2h = {}; // h2h[a][b] = сколько раз a обыграл b напрямую
+  g.pids.forEach(p => { st[p] = { pid: p, w: 0, l: 0, sf: 0, sa: 0, h2h: 0 }; h2h[p] = {}; });
   for (const m of groupMatches(t, g)) {
     if (!m.winner) continue;
     const w = m.winner, l = loserOf(m);
@@ -820,9 +821,19 @@ function standings(t, g) {
     const ws = m.slots[wi].score || 0, ls = m.slots[1 - wi].score || 0;
     if (st[w]) { st[w].w++; st[w].sf += ws; st[w].sa += ls; }
     if (st[l]) { st[l].l++; st[l].sf += ls; st[l].sa += ws; }
+    if (h2h[w] && st[l]) h2h[w][l] = (h2h[w][l] || 0) + 1;
   }
-  return Object.values(st).sort((a, b) =>
-    b.w - a.w || (b.sf - b.sa) - (a.sf - a.sa) || b.sf - a.sf ||
+  const arr = Object.values(st);
+  // Тай-брейк по личной встрече: среди команд с равным числом побед
+  // считаем победы в очных матчах между ними (мини-таблица).
+  arr.forEach(s => {
+    const tied = arr.filter(o => o.w === s.w).map(o => o.pid);
+    s.h2h = tied.length > 1
+      ? tied.reduce((n, o) => o === s.pid ? n : n + (h2h[s.pid][o] || 0), 0)
+      : 0;
+  });
+  return arr.sort((a, b) =>
+    b.w - a.w || b.h2h - a.h2h || (b.sf - b.sa) - (a.sf - a.sa) || b.sf - a.sf ||
     pname(t, a.pid).localeCompare(pname(t, b.pid), 'ru'));
 }
 async function moveBetweenGroups(t, pid, fromGid, toGid) {
@@ -2208,7 +2219,7 @@ function rrHtml(t, champ) {
           ${ro ? '' : `<button class="mini" data-tip="Добавить игрока" data-action="gadd" data-gid="${g.id}" style="font-size:15px">＋</button>`}
         </div>
         <table class="stand">
-          <tr><th class="num">#</th><th>Игрок</th><th class="num" data-tip="Победы">В</th><th class="num" data-tip="Поражения">П</th><th class="num" data-tip="Разница счёта">±</th></tr>
+          <tr><th class="num" data-tip="Место. При равных победах решает личная встреча, потом разница счёта">#</th><th>Игрок</th><th class="num" data-tip="Победы">В</th><th class="num" data-tip="Поражения">П</th><th class="num" data-tip="Разница счёта">±</th></tr>
           ${rows}
         </table>
       </div>
