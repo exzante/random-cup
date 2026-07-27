@@ -514,6 +514,25 @@ canvas.confetti{position:fixed;inset:0;z-index:100;pointer-events:none}
 .poschip .pcm{margin-left:auto;font-family:var(--disp);font-weight:700;font-size:13px;color:var(--gold2);font-variant-numeric:tabular-nums;flex-shrink:0}
 .poschip.multi{--bl:linear-gradient(135deg,var(--teal),var(--gold-deep))}
 .poschip.multi .pcn{color:var(--teal)}
+/* лобби */
+.lobwrap{max-width:1100px;margin:20px auto 44px}
+.lobgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,320px),1fr));gap:16px}
+.lobcard{--c:14px;--bl:var(--line);padding:16px 18px;display:flex;flex-direction:column}
+.lobhead{display:flex;align-items:flex-start;gap:8px;margin-bottom:4px}
+.lobhead h3{flex:1;font-family:var(--disp);font-weight:600;font-size:16px;letter-spacing:.04em;color:var(--gold2)}
+.lobmeta{font-size:12px;color:var(--muted);margin-bottom:8px}
+.lobnote{font-size:12.5px;color:var(--text);background:var(--panel2);border:1px solid var(--line);padding:7px 11px;margin-bottom:10px}
+.lobrostlbl{font-family:var(--disp);font-size:10px;letter-spacing:.2em;text-transform:uppercase;color:var(--dim);margin:4px 0 8px;display:flex;gap:8px}
+.lobrostlbl span{color:var(--gold2)}
+.lobrost{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px}
+.lchip{display:inline-flex;align-items:center;gap:6px;background:var(--panel2);border:1px solid var(--line);padding:4px 9px 4px 4px;font-size:12px;font-weight:600}
+.lchip i{color:var(--muted);font-style:normal;font-size:10px}
+.lobpend{border-top:1px solid var(--line);margin-top:6px;padding-top:9px}
+.lobpendh{font-family:var(--disp);font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:var(--teal);margin-bottom:7px}
+.lreq{display:flex;align-items:center;gap:8px;padding:5px 0}
+.lreq .lrn{flex:1;min-width:0;font-size:12.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.lobfoot{display:flex;align-items:center;gap:10px;margin-top:auto;padding-top:12px}
+.lobcap{font-size:11px;color:var(--dim)}
 /* страница профиля */
 .profwrap{max-width:760px;margin:20px auto 44px}
 .profhead{--c:14px;--bl:var(--line2);display:flex;align-items:center;gap:18px;padding:20px 22px;flex-wrap:wrap}
@@ -2199,6 +2218,7 @@ function render() {
   else if (view.screen === 'create') app.innerHTML = screenCreate();
   else if (view.screen === 'players') app.innerHTML = screenPlayers();
   else if (view.screen === 'profile') app.innerHTML = screenProfile(view.pid);
+  else if (view.screen === 'lobbies') app.innerHTML = screenLobbies();
   else app.innerHTML = screenTour();
   [...app.querySelectorAll('.bsec')].forEach((s, i) => {
     if (scrolls[i]) { s.scrollLeft = scrolls[i].l; s.scrollTop = scrolls[i].t; }
@@ -2259,15 +2279,18 @@ function renderTopbar() {
     ${mid}
     <span class="spacer"></span>
     ${view.screen === 'home'
-      ? `<button class="btn sm ghost" data-action="players" data-tip="База игроков: имена, ники, MMR, история">👥 Игроки</button>
+      ? `<button class="btn sm ghost" data-action="lobbies" data-tip="Лобби / пикапы: собрать катку, подать заявку">🎮 Лобби</button>
+         <button class="btn sm ghost" data-action="players" data-tip="База игроков: имена, ники, MMR, история">👥 Игроки</button>
          <button class="btn sm ghost" data-action="export" data-tip="Скачать все турниры в JSON-файл">💾 Бэкап</button>
          <button class="btn sm ghost" data-action="import" data-tip="Загрузить турниры из файла">📂 Импорт</button>`
       : view.screen === 'players'
       ? `<button class="btn sm ghost" data-action="home">← На главную</button>`
+      : view.screen === 'lobbies'
+      ? `<button class="btn sm ghost" data-action="home">← На главную</button>`
       : view.screen === 'profile'
       ? `<button class="btn sm ghost" data-action="players">← К игрокам</button>`
       : `${addBtn}<button class="btn sm ghost" data-action="home">← Все турниры</button>`}
-    ${['home', 'players', 'profile'].includes(view.screen)
+    ${['home', 'players', 'profile', 'lobbies'].includes(view.screen)
       ? (isPlayer()
         ? `<button class="btn sm icon ghost" data-action="myprofile" data-tip="@${esc(rcPlayer.username)} — мой профиль">👤</button>`
         : `<button class="btn sm icon ghost" data-action="adminlogin" data-tip="${isAdmin() ? 'Организатор — выйти' : 'Вход'}">${isAdmin() ? '🔓' : '🔒'}</button>`) : ''}
@@ -2656,6 +2679,107 @@ function screenProfile(pid) {
         : `<span class="note">Пока не участвовал в турнирах.</span>`}
     </div>
   </div>`;
+}
+/* ================= лобби (пикапы) ================= */
+let LB = { list: [], signups: [] };
+let lbSyncing = false;
+function actorArgs() {
+  if (isAdmin()) return { p_secret: rcSecret, p_username: null, p_password: null };
+  if (isPlayer()) return { p_secret: null, p_username: rcPlayer.username, p_password: rcPlayer.pass };
+  return null;
+}
+function myActorId() { return isAdmin() ? 'admin' : (isPlayer() ? myId() : null); }
+function lobbySignups(lid) { return LB.signups.filter(s => s.lobby_id === lid); }
+async function lobbyLoad() {
+  lbSyncing = true; if (view.screen === 'lobbies') renderTopbar();
+  try {
+    await loadSB();
+    const [r1, r2] = await Promise.all([
+      sb.from('lobbies').select('*').order('created_at', { ascending: false }),
+      sb.from('lobby_signups').select('*')
+    ]);
+    if (r1.error) throw r1.error; if (r2.error) throw r2.error;
+    LB.list = r1.data || []; LB.signups = r2.data || [];
+    lbSyncing = false;
+    if (view.screen === 'lobbies') render();
+    return true;
+  } catch (e) { lbSyncing = false; if (view.screen === 'lobbies') { renderTopbar(); toast('Нет связи с базой', '⚠️'); } return false; }
+}
+function lobbyCardHtml(l, mine) {
+  const su = lobbySignups(l.id);
+  const accepted = su.filter(s => s.status === 'accepted');
+  const pending = su.filter(s => s.status === 'requested');
+  const isOwner = isAdmin() || (mine && l.created_by === mine);
+  const myS = isPlayer() ? su.find(s => s.player_id === myId()) : null;
+  const meta = [l.format, l.when_text, l.mmr_cap ? `лимит ${l.mmr_cap} MMR` : ''].filter(Boolean).join(' · ');
+  const roster = accepted.length
+    ? accepted.map(s => `<span class="lchip">${avatarByName(s.player_name)}<span>${esc(s.player_name)}</span>${s.pos ? `<i>${esc(s.pos)}</i>` : ''}</span>`).join('')
+    : '<span class="note">пока никого не приняли</span>';
+  const pendHtml = isOwner && pending.length
+    ? `<div class="lobpend"><div class="lobpendh">📨 Заявки (${pending.length})</div>${pending.map(s => `<div class="lreq">
+        ${avatarByName(s.player_name)}<span class="lrn">${esc(s.player_name)}${s.pos ? ` · поз ${esc(s.pos)}` : ''}${s.note ? ` — ${esc(s.note)}` : ''}</span>
+        <button class="mini" data-action="lobaccept" data-sid="${s.id}" data-tip="Принять">✓</button>
+        <button class="mini del" data-action="lobdecline" data-sid="${s.id}" data-tip="Отклонить">✕</button>
+      </div>`).join('')}</div>` : '';
+  const joinBtn = isPlayer() && !isOwner
+    ? (myS
+      ? `<button class="btn sm ghost" data-action="lobleave" data-lid="${l.id}">${myS.status === 'accepted' ? '✓ Ты в составе' : myS.status === 'requested' ? '⏳ Заявка отправлена — отменить' : 'Отклонён — подать снова'}</button>`
+      : `<button class="btn sm primary" data-action="lobjoin" data-lid="${l.id}">Подать заявку</button>`)
+    : '';
+  return `<div class="lobcard cut">
+    <div class="lobhead"><h3>${esc(l.title)}</h3>${isOwner ? `<button class="mini del" data-action="lobclose" data-lid="${l.id}" data-tip="Закрыть лобби">✕</button>` : ''}</div>
+    <div class="lobmeta">${esc(meta || '—')}</div>
+    ${l.note ? `<div class="lobnote">${esc(l.note)}</div>` : ''}
+    <div class="lobrostlbl">Состав <span>${accepted.length}</span></div>
+    <div class="lobrost">${roster}</div>
+    ${pendHtml}
+    <div class="lobfoot"><span class="lobcap">кэп: ${esc(l.creator_name || '')}</span><span style="flex:1"></span>${joinBtn}</div>
+  </div>`;
+}
+function screenLobbies() {
+  const canCreate = isAdmin() || isPlayer();
+  const mine = myActorId();
+  return `<div class="lobwrap">
+    <div class="reghead">
+      <h2>Лобби</h2><span class="regcount">${LB.list.length}</span>
+      <span style="flex:1"></span>
+      <button class="btn sm ghost" data-action="lobrefresh" data-tip="Обновить">↻</button>
+      ${canCreate ? `<button class="btn primary sm" data-action="lobcreate">＋ Лобби</button>` : ''}
+    </div>
+    ${!canCreate ? `<div class="regnote">👁 Смотришь как гость. Чтобы создавать лобби и подавать заявки — <b data-action="adminlogin" style="cursor:pointer;color:var(--gold2)">войди</b>.</div>` : ''}
+    ${LB.list.length
+      ? `<div class="lobgrid">${LB.list.map(l => lobbyCardHtml(l, mine)).join('')}</div>`
+      : `<div class="empty"><span class="big">🎮</span>Пока нет открытых лобби.${canCreate ? ' Создай первое — <b>«＋ Лобби»</b>.' : ''}</div>`}
+  </div>`;
+}
+function lobbyCreateModal() {
+  if (!(isAdmin() || isPlayer())) return;
+  const ov = openModal(`
+    <div class="mtitle">Новое лобби</div>
+    <div class="mbody" style="text-align:left;display:flex;flex-direction:column;gap:2px">
+      <label class="flbl">Название</label><input id="lbTitle" placeholder="Вечерние катки 5х5">
+      <label class="flbl">Формат</label><input id="lbFormat" placeholder="5x5 / 2 команды">
+      <label class="flbl">Когда</label><input id="lbWhen" placeholder="сегодня 20:00">
+      <label class="flbl">Лимит MMR команды <span class="note">(необязательно)</span></label><input id="lbCap" type="number" inputmode="numeric" placeholder="напр. 25000">
+      <label class="flbl">Заметка</label><input id="lbNote" placeholder="дискорд, разбивка по позициям…">
+    </div>
+    <div class="mrow"><span style="flex:1"></span><button class="btn ghost" id="lbCancel">Отмена</button><button class="btn primary" id="lbSave">Создать</button></div>`);
+  ov.querySelector('#lbCancel').onclick = () => closeModal(ov);
+  ov.onclick = e => { if (e.target === ov) closeModal(ov); };
+  ov.querySelector('#lbSave').onclick = async () => {
+    const title = ov.querySelector('#lbTitle').value.trim();
+    if (!title) { ov.querySelector('#lbTitle').focus(); return; }
+    const l = { title, format: ov.querySelector('#lbFormat').value.trim(), when: ov.querySelector('#lbWhen').value.trim(), mmrCap: ov.querySelector('#lbCap').value.trim(), note: ov.querySelector('#lbNote').value.trim() };
+    const args = actorArgs(); if (!args) return;
+    const btn = ov.querySelector('#lbSave'); btn.disabled = true; btn.textContent = 'Создание…';
+    try { await loadSB(); const { error } = await sb.rpc('rc_lobby_create', Object.assign({ l }, args)); if (error) throw error; closeModal(ov); await lobbyLoad(); toast('Лобби создано', '🎮', true); }
+    catch (e) { btn.disabled = false; btn.textContent = 'Создать'; uiAlert('Не получилось создать лобби — проверь вход и связь.'); }
+  };
+  setTimeout(() => { const n = ov.querySelector('#lbTitle'); if (n) n.focus(); }, 30);
+}
+async function lobbyRpc(fn, args, okMsg) {
+  try { await loadSB(); const { error } = await sb.rpc(fn, args); if (error) throw error; await lobbyLoad(); if (okMsg) toast(okMsg); return true; }
+  catch (e) { uiAlert('Не получилось — проверь вход и связь.'); return false; }
 }
 function screenHome() {
   let totalP = 0, totalM = 0;
@@ -3124,6 +3248,25 @@ document.addEventListener('click', async e => {
   }
   else if (a === 'pstats') showPlayerStats(el.dataset.name);
   else if (a === 'players') { view = { screen: 'players', tid: null }; render(); regLoad(); }
+  else if (a === 'lobbies') { view = { screen: 'lobbies', tid: null }; render(); lobbyLoad(); }
+  else if (a === 'lobrefresh') { lobbyLoad(); }
+  else if (a === 'lobcreate') { lobbyCreateModal(); }
+  else if (a === 'lobjoin') {
+    if (!isPlayer()) { uiAlert('Войди как игрок (🔒 → Я игрок), чтобы подать заявку.'); return; }
+    lobbyRpc('rc_lobby_join', { p_username: rcPlayer.username, p_password: rcPlayer.pass, p_lobby: el.dataset.lid, p_note: '' }, 'Заявка отправлена 📨');
+  }
+  else if (a === 'lobleave') {
+    if (!isPlayer()) return;
+    if (await uiConfirm('Отозвать заявку / выйти из лобби?', { ok: 'Да' }))
+      lobbyRpc('rc_lobby_leave', { p_username: rcPlayer.username, p_password: rcPlayer.pass, p_lobby: el.dataset.lid }, 'Готово');
+  }
+  else if (a === 'lobaccept') { const ar = actorArgs(); if (ar) lobbyRpc('rc_lobby_signup_status', Object.assign({ p_signup: el.dataset.sid, p_status: 'accepted' }, ar), 'Принят в состав'); }
+  else if (a === 'lobdecline') { const ar = actorArgs(); if (ar) lobbyRpc('rc_lobby_signup_status', Object.assign({ p_signup: el.dataset.sid, p_status: 'declined' }, ar)); }
+  else if (a === 'lobclose') {
+    const ar = actorArgs(); if (!ar) return;
+    if (await uiConfirm('Закрыть лобби? Оно удалится вместе с заявками.', { title: 'Закрыть лобби?', ok: 'Закрыть', danger: true }))
+      lobbyRpc('rc_lobby_close', Object.assign({ p_lobby: el.dataset.lid }, ar), 'Лобби закрыто');
+  }
   else if (a === 'adminlogin') { adminLoginModal(); }
   else if (a === 'pedit') { if (isAdmin()) playerEditModal(el.dataset.pid || null); }
   else if (a === 'managelogin') { if (isAdmin()) manageLoginModal(el.dataset.pid); }
