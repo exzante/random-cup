@@ -470,6 +470,11 @@ canvas.confetti{position:fixed;inset:0;z-index:100;pointer-events:none}
 .pmmrhist b{color:var(--gold2);font-variant-numeric:tabular-nums}
 .posmini{display:inline-grid;place-items:center;width:16px;height:16px;margin-left:7px;font-size:10px;font-weight:800;color:var(--gold2);background:var(--gold-soft);border:1px solid var(--gold-deep);border-radius:4px;vertical-align:middle}
 .posbadge{font-size:11px;font-weight:600;color:var(--gold2);background:var(--gold-soft);border:1px solid var(--gold-deep);padding:2px 9px}
+.lftbadge{font-size:10px;font-weight:700;letter-spacing:.05em;color:var(--teal);background:var(--teal-soft);border:1px solid rgba(45,212,191,.5);padding:2px 8px;white-space:nowrap;flex-shrink:0}
+.reglist.lftonly .prow:not([data-lft]){display:none}
+.creds{display:flex;align-items:center;gap:12px;padding:9px 13px;background:var(--panel2);border:1px solid var(--line);margin-top:8px}
+.creds span{font-family:var(--disp);font-size:10px;letter-spacing:.18em;text-transform:uppercase;color:var(--dim);width:60px}
+.creds b{font-family:var(--disp);font-size:18px;color:var(--gold2);letter-spacing:.05em}
 /* страница профиля */
 .profwrap{max-width:760px;margin:20px auto 44px}
 .profhead{--c:14px;--bl:var(--line2);display:flex;align-items:center;gap:18px;padding:20px 22px;flex-wrap:wrap}
@@ -1122,6 +1127,11 @@ function closeModal(ov) {
   ov.classList.remove('on');
   setTimeout(() => ov.remove(), 170);
 }
+document.addEventListener('keydown', e => {
+  if (e.key !== 'Escape') return;
+  const ovs = document.querySelectorAll('.overlay.on');
+  if (ovs.length) closeModal(ovs[ovs.length - 1]);
+});
 function uiConfirm(msg, opts = {}) {
   return new Promise(res => {
     const ov = openModal(`
@@ -1428,15 +1438,38 @@ function setLive(s) { if (liveStatus !== s) { liveStatus = s; renderTopbar(); } 
 
 /* ===== роли: админ (пароль организатора) хранится локально ===== */
 let rcSecret = localStorage.getItem('rc_secret') || null;
+let rcPlayer = null;
+try { rcPlayer = JSON.parse(localStorage.getItem('rc_player') || 'null'); } catch (e) { rcPlayer = null; }
 function isAdmin() { return !!rcSecret; }
+function isPlayer() { return !!(rcPlayer && rcPlayer.id); }
+function myId() { return rcPlayer ? rcPlayer.id : null; }
 function persistLocal() { try { localStorage.setItem(LS_KEY, JSON.stringify(DB)); } catch (e) {} }
+/* единый вход: организатор или игрок; повторный клик — выход */
 async function adminLoginModal() {
   if (isAdmin()) {
-    if (await uiConfirm('Выйти из режима администратора?', { title: 'Админ', ok: 'Выйти' })) {
-      rcSecret = null; localStorage.removeItem('rc_secret'); renderTopbar(); render(); toast('Вышел из админки', '🔒');
+    if (await uiConfirm('Выйти из режима организатора?', { title: 'Организатор', ok: 'Выйти' })) {
+      rcSecret = null; localStorage.removeItem('rc_secret'); renderTopbar(); render(); toast('Вышел', '🔒');
     }
     return;
   }
+  if (isPlayer()) {
+    if (await uiConfirm('Выйти из аккаунта @' + esc(rcPlayer.username) + '?', { title: 'Аккаунт', ok: 'Выйти' })) {
+      rcPlayer = null; localStorage.removeItem('rc_player'); renderTopbar(); render(); toast('Вышел', '🔒');
+    }
+    return;
+  }
+  const ov = openModal(`
+    <div class="mtitle">Вход</div>
+    <div class="mbody" style="display:flex;flex-direction:column;gap:10px">
+      <button class="btn" id="asAdmin">🔑 Я организатор</button>
+      <button class="btn" id="asPlayer">🎮 Я игрок</button>
+      <div class="note" style="margin-top:4px">Зрителям вход не нужен — всё видно и так.</div>
+    </div>`);
+  ov.onclick = e => { if (e.target === ov) closeModal(ov); };
+  ov.querySelector('#asAdmin').onclick = () => { closeModal(ov); adminLogin(); };
+  ov.querySelector('#asPlayer').onclick = () => { closeModal(ov); playerLogin(); };
+}
+async function adminLogin() {
   const pass = await uiPrompt('Пароль организатора', '');
   if (!pass) return;
   try {
@@ -1445,15 +1478,30 @@ async function adminLoginModal() {
     if (error) throw error;
     if (data === true) {
       rcSecret = pass; localStorage.setItem('rc_secret', pass);
-      renderTopbar(); render(); toast('Вход администратора', '🔓', true);
+      renderTopbar(); render(); toast('Вход организатора', '🔓', true);
     } else uiAlert('Неверный пароль организатора.');
   } catch (e) { uiAlert('Нет связи с базой — проверь интернет.'); }
+}
+async function playerLogin() {
+  const u = await uiPrompt('Твой ник (логин)', '');
+  if (!u) return;
+  const pw = await uiPrompt('Пароль (выдаёт организатор)', '');
+  if (!pw) return;
+  try {
+    await loadSB();
+    const { data, error } = await sb.rpc('rc_login', { p_username: u.trim(), p_password: pw });
+    if (error) throw error;
+    rcPlayer = { id: data, username: u.trim().toLowerCase(), pass: pw };
+    localStorage.setItem('rc_player', JSON.stringify(rcPlayer));
+    await regLoad(); renderTopbar(); render(); toast('Ты в аккаунте', '🎮', true);
+  } catch (e) { uiAlert('Неверный ник или пароль. Если аккаунта нет — попроси организатора включить тебе вход.'); }
 }
 
 /* ===== общий реестр игроков в Supabase ===== */
 function playerFromRow(r) {
   return { id: r.id, name: r.name, nick: r.nick || '', mmr: r.mmr, phone: r.phone || '', pos: r.pos || '',
     mmrHistory: Array.isArray(r.mmr_history) ? r.mmr_history : [], note: r.note || '',
+    lft: !!r.lft, lftNote: r.lft_note || '',
     account: r.account || null, updatedAt: r.updated_at ? Date.parse(r.updated_at) : 0 };
 }
 function playerToPayload(p) {
@@ -2178,8 +2226,8 @@ function renderTopbar() {
       : view.screen === 'profile'
       ? `<button class="btn sm ghost" data-action="players">← К игрокам</button>`
       : `${addBtn}<button class="btn sm ghost" data-action="home">← Все турниры</button>`}
-    ${view.screen === 'home' || view.screen === 'players'
-      ? `<button class="btn sm icon ghost" data-action="adminlogin" data-tip="${isAdmin() ? 'Администратор — выйти' : 'Вход администратора'}">${isAdmin() ? '🔓' : '🔒'}</button>` : ''}
+    ${['home', 'players', 'profile'].includes(view.screen)
+      ? `<button class="btn sm icon ghost" data-action="adminlogin" data-tip="${isAdmin() ? 'Организатор — выйти' : isPlayer() ? ('@' + esc(rcPlayer.username) + ' — выйти') : 'Вход'}">${isAdmin() ? '🔓' : isPlayer() ? '👤' : '🔒'}</button>` : ''}
     <button class="btn sm icon ghost" data-action="mute" data-tip="${soundOn ? 'Звук включён' : 'Звук выключен'}">${soundOn ? '🔊' : '🔇'}</button>
     <button class="btn sm icon ghost" data-action="help" data-tip="Справка">❔</button>
     ${view.screen === 'home' ? `<button class="btn primary sm" data-action="new">+ Новый турнир</button>` : ''}
@@ -2308,19 +2356,22 @@ function screenPlayers() {
         <button class="mini del" data-action="pregdel" data-pid="${p.id}" data-tip="Удалить из базы">✕</button>
       </span>` : '';
     const pos = p.pos ? `<span class="posmini" data-tip="Позиция">${esc(p.pos)}</span>` : '';
-    const tip = [p.nick ? '@' + p.nick : '', p.mmr != null ? p.mmr + ' MMR' : '', posLabel(p.pos)].filter(Boolean).join(' · ') || 'Открыть профиль';
-    return `<div class="prow cut" data-action="pprofile" data-pid="${p.id}" data-search="${esc((p.name + ' ' + (p.nick || '')).toLowerCase())}" data-tip="${esc(tip)}">
+    const lft = p.lft ? `<span class="lftbadge" data-tip="${esc(p.lftNote || 'Ищет команду')}">🔎 LFT</span>` : '';
+    const tip = [p.nick ? '@' + p.nick : '', p.mmr != null ? p.mmr + ' MMR' : '', posLabel(p.pos), p.lft ? 'ищет команду' : ''].filter(Boolean).join(' · ') || 'Открыть профиль';
+    return `<div class="prow cut" data-action="pprofile" data-pid="${p.id}"${p.lft ? ' data-lft="1"' : ''} data-search="${esc((p.name + ' ' + (p.nick || '')).toLowerCase())}" data-tip="${esc(tip)}">
       ${avatarByName(p.nick || p.name)}
       <div class="pcol"><span class="pnm">${esc(p.name)}${pos}</span>${p.nick ? `<span class="pnk">@${esc(p.nick)}</span>` : ''}</div>
-      ${tt}${trend}
+      ${lft}${tt}${trend}
       <span class="pmmr">${p.mmr != null ? p.mmr : '—'}<small>MMR</small></span>
       ${wa}${tools}
     </div>`;
   }).join('');
+  const lftCount = list.filter(p => p.lft).length;
   return `<div class="regwrap">
     <div class="reghead">
       <h2>База игроков</h2><span class="regcount">${DB.players.length}</span>
       <span style="flex:1"></span>
+      <button class="btn sm ghost" data-action="lftfilter" data-tip="Показать только тех, кто ищет команду">🔎 LFT${lftCount ? ` (${lftCount})` : ''}</button>
       <input id="pSearch" class="regsearch" placeholder="Поиск по имени или нику…">
       ${admin ? `<button class="btn primary sm" data-action="pedit" data-tip="Добавить нового игрока">＋ Игрок</button>` : ''}
     </div>
@@ -2417,6 +2468,84 @@ function playerEditModal(pid) {
   };
   setTimeout(() => { const n = ov.querySelector('#peName'); if (n) n.focus(); }, 30);
 }
+function genPass() { const a = 'abcdefghijkmnpqrstuvwxyz23456789'; let s = ''; for (let i = 0; i < 5; i++) s += a[Math.floor(Math.random() * a.length)]; return s; }
+function credsModal(user, pass) {
+  const ov = openModal(`
+    <div class="mtitle">Вход создан ✓</div>
+    <div class="mbody" style="text-align:left">
+      <div class="note" style="margin-bottom:10px">Отправь игроку — он заходит через 🔒 → «Я игрок».</div>
+      <div class="creds"><span>Логин</span><b>${esc(user)}</b></div>
+      <div class="creds"><span>Пароль</span><b>${esc(pass)}</b></div>
+    </div>
+    <div class="mrow"><span style="flex:1"></span><button class="btn primary" id="cOk">Понятно</button></div>`);
+  ov.querySelector('#cOk').onclick = () => closeModal(ov);
+  ov.onclick = e => { if (e.target === ov) closeModal(ov); };
+}
+async function manageLoginModal(pid) {
+  const p = regById(pid); if (!p || !isAdmin()) return;
+  let has = false;
+  try { await loadSB(); const { data } = await sb.rpc('rc_has_login', { p_id: pid }); has = data === true; } catch (e) {}
+  const ov = openModal(`
+    <div class="mtitle">Вход для ${esc(p.name)}</div>
+    <div class="mbody" style="text-align:left;display:flex;flex-direction:column;gap:8px">
+      <div class="note">${has ? 'Вход включён. Можно сгенерировать новый пароль или выключить.' : 'Игрок сможет заходить по нику и паролю: ставить «ищу команду», кидать заявки в лобби.'}</div>
+      <label class="flbl">Логин</label>
+      <input id="mlUser" value="${esc(p.nick || p.name)}">
+    </div>
+    <div class="mrow">
+      ${has ? '<button class="btn sm danger" id="mlOff">Выключить</button>' : ''}
+      <span style="flex:1"></span>
+      <button class="btn ghost" id="mlCancel">Отмена</button>
+      <button class="btn primary" id="mlGen">${has ? 'Новый пароль' : 'Включить вход'}</button>
+    </div>`);
+  ov.querySelector('#mlCancel').onclick = () => closeModal(ov);
+  ov.onclick = e => { if (e.target === ov) closeModal(ov); };
+  ov.querySelector('#mlGen').onclick = async () => {
+    const user = ov.querySelector('#mlUser').value.trim();
+    if (!user) { ov.querySelector('#mlUser').focus(); return; }
+    const pass = genPass();
+    try {
+      await loadSB();
+      const { error } = await sb.rpc('rc_set_login', { p_secret: rcSecret, p_id: pid, p_username: user, p_password: pass });
+      if (error) throw error;
+      closeModal(ov); credsModal(user, pass);
+    } catch (e) { uiAlert('Не получилось — проверь связь и пароль организатора.'); }
+  };
+  if (has) ov.querySelector('#mlOff').onclick = async () => {
+    if (!await uiConfirm('Выключить вход игроку?', { ok: 'Выключить', danger: true })) return;
+    try { await loadSB(); const { error } = await sb.rpc('rc_disable_login', { p_secret: rcSecret, p_id: pid }); if (error) throw error; closeModal(ov); toast('Вход выключен'); }
+    catch (e) { uiAlert('Не получилось.'); }
+  };
+}
+function lftModal(pid) {
+  const p = regById(pid); if (!p || !isPlayer() || myId() !== pid) return;
+  const ov = openModal(`
+    <div class="mtitle">Поиск команды</div>
+    <div class="mbody" style="text-align:left;display:flex;flex-direction:column;gap:8px">
+      <div class="note">Включи «ищу команду» — тебя увидят в поиске игроков (фильтр LFT), и капитаны позовут.</div>
+      <label class="flbl">Что ищу <span class="note">(необязательно)</span></label>
+      <input id="lftNote" placeholder="на турнир в сб / лобби сегодня, поз. 4" value="${p.lftNote ? esc(p.lftNote) : ''}">
+    </div>
+    <div class="mrow">
+      ${p.lft ? '<button class="btn sm danger" id="lftOff">Снять LFT</button>' : ''}
+      <span style="flex:1"></span>
+      <button class="btn ghost" id="lftCancel">Отмена</button>
+      <button class="btn primary" id="lftOn">${p.lft ? 'Обновить' : 'Искать команду'}</button>
+    </div>`);
+  const apply = async (on) => {
+    const note = ov.querySelector('#lftNote').value.trim();
+    try {
+      await loadSB();
+      const { error } = await sb.rpc('rc_set_lft', { p_username: rcPlayer.username, p_password: rcPlayer.pass, p_on: on, p_note: note });
+      if (error) throw error;
+      closeModal(ov); await regLoad(); toast(on ? 'Ты в поиске команды' : 'LFT снят', '🔎');
+    } catch (e) { uiAlert('Не получилось. Попробуй войти заново.'); }
+  };
+  ov.querySelector('#lftOn').onclick = () => apply(true);
+  if (p.lft) ov.querySelector('#lftOff').onclick = () => apply(false);
+  ov.querySelector('#lftCancel').onclick = () => closeModal(ov);
+  ov.onclick = e => { if (e.target === ov) closeModal(ov); };
+}
 function screenProfile(pid) {
   const p = regById(pid);
   if (!p) { view = { screen: 'players', tid: null }; return screenPlayers(); }
@@ -2434,14 +2563,18 @@ function screenProfile(pid) {
         <div class="profsub">
           ${p.nick ? `<span class="pnk">@${esc(p.nick)}</span>` : ''}
           ${p.pos ? `<span class="posbadge">${esc(posLabel(p.pos))}</span>` : ''}
+          ${p.lft ? `<span class="lftbadge" data-tip="${esc(p.lftNote || 'Ищет команду')}">🔎 LFT</span>` : ''}
         </div>
       </div>
       <div class="profmmr"><b>${p.mmr != null ? p.mmr : '—'}</b><span>MMR${peak > (p.mmr || 0) ? ` · пик ${peak}` : ''}</span></div>
       <div class="profact">
         ${p.phone ? `<button class="btn sm" data-action="wa" data-phone="${esc(p.phone)}" data-tip="${esc(p.phone)}">🟢 WhatsApp</button>` : ''}
+        ${isPlayer() && myId() === p.id ? `<button class="btn sm ${p.lft ? 'primary' : ''}" data-action="lfttoggle" data-pid="${p.id}">${p.lft ? '✓ Ищу команду' : '🔎 Искать команду'}</button>` : ''}
+        ${admin ? `<button class="btn sm ghost" data-action="managelogin" data-pid="${p.id}" data-tip="Включить/сменить вход игроку">🔑 Вход игрока</button>` : ''}
         ${admin ? `<button class="btn sm ghost" data-action="pedit" data-pid="${p.id}">✎ Изменить</button>` : ''}
       </div>
     </div>
+    ${p.lft ? `<div class="profnote cut" style="--bl:rgba(45,212,191,.5)">🔎 Ищет команду${p.lftNote ? ': ' + esc(p.lftNote) : ''}</div>` : ''}
     ${p.note ? `<div class="profnote cut">📝 ${esc(p.note)}</div>` : ''}
     <div class="profgrid">
       <div class="pcard cut"><b>${s.tours}</b><span>турниров</span></div>
@@ -2918,6 +3051,12 @@ document.addEventListener('click', async e => {
   else if (a === 'players') { view = { screen: 'players', tid: null }; render(); regLoad(); }
   else if (a === 'adminlogin') { adminLoginModal(); }
   else if (a === 'pedit') { if (isAdmin()) playerEditModal(el.dataset.pid || null); }
+  else if (a === 'managelogin') { if (isAdmin()) manageLoginModal(el.dataset.pid); }
+  else if (a === 'lfttoggle') { lftModal(el.dataset.pid); }
+  else if (a === 'lftfilter') {
+    const list = document.querySelector('.reglist'); if (!list) return;
+    el.classList.toggle('primary', list.classList.toggle('lftonly'));
+  }
   else if (a === 'pprofile') { view = { screen: 'profile', pid: el.dataset.pid, tid: null }; render(); }
   else if (a === 'wa') { const ph = (el.dataset.phone || '').replace(/[^\d]/g, ''); if (ph) window.open('https://wa.me/' + ph, '_blank', 'noopener'); }
   else if (a === 'pregdel') {

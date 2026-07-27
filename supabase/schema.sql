@@ -114,8 +114,86 @@ grant execute on function public.rc_upsert_player(text, jsonb) to anon;
 grant execute on function public.rc_delete_player(text, text) to anon;
 grant execute on function public.rc_check(text)               to anon;
 
+
 -- ============================================================
--- Клиент читает игроков так:   sb.from('players').select('*')
--- Пишет так:  sb.rpc('rc_upsert_player', { p_secret, p })
--- Удаляет:    sb.rpc('rc_delete_player', { p_secret, p_id })
+-- ЧАСТЬ 2. Вход игроков (логины) + статус LFT «ищу команду»
+-- ============================================================
+
+create extension if not exists pgcrypto;   -- для хеширования паролей (crypt/gen_salt)
+
+-- LFT-поля на игроке (читаются публично вместе с профилем)
+alter table public.players add column if not exists lft      boolean not null default false;
+alter table public.players add column if not exists lft_note text;
+
+-- Логины игроков. Пароли — только хешем. Наружу таблица НЕ читается.
+create table if not exists public.player_auth (
+  player_id  text primary key references public.players(id) on delete cascade,
+  username   text unique not null,
+  pass_hash  text not null,
+  updated_at timestamptz not null default now()
+);
+alter table public.player_auth enable row level security;
+-- политик нет => анон-ключ не может ни читать, ни писать напрямую. Только через RPC.
+
+-- Админ включает/меняет вход игроку (ник + простой пароль)
+create or replace function public.rc_set_login(p_secret text, p_id text, p_username text, p_password text)
+returns void language plpgsql security definer set search_path = public as $$
+begin
+  if not public.rc_check(p_secret) then raise exception 'forbidden'; end if;
+  insert into public.player_auth(player_id, username, pass_hash, updated_at)
+  values (p_id, lower(p_username), crypt(p_password, gen_salt('bf')), now())
+  on conflict (player_id) do update
+    set username = lower(excluded.username), pass_hash = excluded.pass_hash, updated_at = now();
+end; $$;
+
+-- Админ выключает вход игроку
+create or replace function public.rc_disable_login(p_secret text, p_id text)
+returns void language plpgsql security definer set search_path = public as $$
+begin
+  if not public.rc_check(p_secret) then raise exception 'forbidden'; end if;
+  delete from public.player_auth where player_id = p_id;
+end; $$;
+
+-- Есть ли у игрока вход (для админ-UI; без пароля, только факт)
+create or replace function public.rc_has_login(p_id text)
+returns boolean language sql security definer set search_path = public as $$
+  select exists(select 1 from public.player_auth where player_id = p_id);
+$$;
+
+-- Вход игрока: ник + пароль -> его player_id (или ошибка)
+create or replace function public.rc_login(p_username text, p_password text)
+returns text language plpgsql security definer set search_path = public as $$
+declare pid text;
+begin
+  select player_id into pid from public.player_auth
+   where username = lower(p_username) and pass_hash = crypt(p_password, pass_hash);
+  if pid is null then raise exception 'bad_credentials'; end if;
+  return pid;
+end; $$;
+
+-- Игрок ставит/снимает LFT (авторизуется своим ником+паролем)
+create or replace function public.rc_set_lft(p_username text, p_password text, p_on boolean, p_note text)
+returns void language plpgsql security definer set search_path = public as $$
+declare pid text;
+begin
+  select player_id into pid from public.player_auth
+   where username = lower(p_username) and pass_hash = crypt(p_password, pass_hash);
+  if pid is null then raise exception 'bad_credentials'; end if;
+  update public.players set lft = p_on, lft_note = nullif(p_note, ''), updated_at = now() where id = pid;
+end; $$;
+
+grant execute on function public.rc_set_login(text, text, text, text) to anon;
+grant execute on function public.rc_disable_login(text, text)         to anon;
+grant execute on function public.rc_has_login(text)                   to anon;
+grant execute on function public.rc_login(text, text)                 to anon;
+grant execute on function public.rc_set_lft(text, text, boolean, text) to anon;
+
+-- ============================================================
+-- Клиент:
+--   игроки:   sb.from('players').select('*')
+--   upsert:   sb.rpc('rc_upsert_player', { p_secret, p })
+--   удалить:  sb.rpc('rc_delete_player', { p_secret, p_id })
+--   вкл вход: sb.rpc('rc_set_login', { p_secret, p_id, p_username, p_password })
+--   вход:     sb.rpc('rc_login', { p_username, p_password }) -> player_id
+--   LFT:      sb.rpc('rc_set_lft', { p_username, p_password, p_on, p_note })
 -- ============================================================
