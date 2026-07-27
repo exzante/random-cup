@@ -479,6 +479,7 @@ canvas.confetti{position:fixed;inset:0;z-index:100;pointer-events:none}
 .regnote{font-size:12.5px;color:var(--muted);background:var(--panel2);border:1px solid var(--line);padding:8px 13px;margin-bottom:14px}
 .segbtns{display:inline-flex;gap:3px}
 .segbtns .btn{padding:6px 11px}
+.regmmrsel{width:auto;padding:7px 10px;font-size:12px}
 .reglist{display:flex;flex-direction:column;gap:8px}
 .prow .mini.wa{font-size:13px;opacity:.85}
 .prow .mini.wa:hover{opacity:1;transform:scale(1.15)}
@@ -533,6 +534,8 @@ canvas.confetti{position:fixed;inset:0;z-index:100;pointer-events:none}
 .lreq .lrn{flex:1;min-width:0;font-size:12.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .lobfoot{display:flex;align-items:center;gap:10px;margin-top:auto;padding-top:12px}
 .lobcap{font-size:11px;color:var(--dim)}
+.laList{max-height:min(50vh,360px);overflow:auto;margin-top:8px;border:1px solid var(--line)}
+.laList .regpickitem{border-bottom:1px solid var(--line)}
 /* страница профиля */
 .profwrap{max-width:760px;margin:20px auto 44px}
 .profhead{--c:14px;--bl:var(--line2);display:flex;align-items:center;gap:18px;padding:20px 22px;flex-wrap:wrap}
@@ -2409,8 +2412,9 @@ function regTitles(pid) {
   }
   return g;
 }
-let regView = 'list';
+let regView = 'pos';        // по позициям по умолчанию (список — по кнопке)
 let regPosFilter = 'all';   // all | one | flex
+let regMmrMin = 0;          // фильтр по рейтингу
 function posChipHtml(p) {
   const multi = posArr(p).length > 1;
   return `<button class="poschip cut ${multi ? 'multi' : ''}" data-action="pprofile" data-pid="${p.id}" data-tip="${multi ? 'Играет на нескольких позициях' : ''}">
@@ -2431,6 +2435,7 @@ function screenPlayers() {
   let list = regPlayers();
   if (regPosFilter === 'one') list = list.filter(p => posArr(p).length === 1);
   else if (regPosFilter === 'flex') list = list.filter(p => posArr(p).length > 1);
+  if (regMmrMin) list = list.filter(p => (p.mmr || 0) >= regMmrMin);
   const rows = list.map(p => {
     const peak = peakMmr(p), titles = regTitles(p.id);
     const trend = peak > (p.mmr || 0) ? `<span class="ppeak" data-tip="Пиковый MMR за историю">пик ${peak}</span>` : '';
@@ -2457,7 +2462,8 @@ function screenPlayers() {
     <div class="reghead">
       <h2>База игроков</h2><span class="regcount">${DB.players.length}</span>
       <span style="flex:1"></span>
-      <span class="segbtns" data-tip="Фильтр по позициям">${[['all', 'Все'], ['one', '1 позиция'], ['flex', 'Флекс']].map(([v, l]) => `<button class="btn sm ${regPosFilter === v ? 'primary' : 'ghost'}" data-action="posfilter" data-val="${v}">${l}</button>`).join('')}</span>
+      <select id="regMmr" class="regmmrsel" data-tip="Фильтр по рейтингу">${[[0, 'Любой MMR'], [2000, '2000+'], [4000, '4000+'], [6000, '6000+'], [8000, '8000+'], [10000, '10000+']].map(([v, l]) => `<option value="${v}" ${regMmrMin === v ? 'selected' : ''}>${l}</option>`).join('')}</select>
+      <span class="segbtns" data-tip="Фильтр по позициям">${[['all', 'Все'], ['one', '1 поз.'], ['flex', 'Флекс']].map(([v, l]) => `<button class="btn sm ${regPosFilter === v ? 'primary' : 'ghost'}" data-action="posfilter" data-val="${v}">${l}</button>`).join('')}</span>
       <button class="btn sm ghost" data-action="regview" data-tip="Переключить вид">${byPos ? '☰ Списком' : '⛃ По позициям'}</button>
       ${byPos ? '' : `<button class="btn sm ghost" data-action="lftfilter" data-tip="Показать только тех, кто ищет команду">🔎 LFT${lftCount ? ` (${lftCount})` : ''}</button>
       <input id="pSearch" class="regsearch" placeholder="Поиск по имени или нику…">`}
@@ -2465,7 +2471,7 @@ function screenPlayers() {
     </div>
     ${!admin && !isPlayer() ? `<div class="regnote">👁 Режим просмотра. Добавляет и меняет игроков администратор — <b data-action="adminlogin" style="cursor:pointer;color:var(--gold2)">войти</b>.</div>` : ''}
     ${!list.length
-      ? `<div class="empty"><span class="big">🧩</span>${regPosFilter !== 'all' ? 'Нет игроков под этот фильтр.' : admin ? 'База пустая — добавь игроков кнопкой <b>«＋ Игрок»</b>.' : 'В базе пока никого.'}</div>`
+      ? `<div class="empty"><span class="big">🧩</span>${(regPosFilter !== 'all' || regMmrMin) ? 'Нет игроков под этот фильтр.' : admin ? 'База пустая — добавь игроков кнопкой <b>«＋ Игрок»</b>.' : 'В базе пока никого.'}</div>`
       : byPos ? `<div class="posrows">${posRowsHtml(list)}</div>`
       : `<div class="reglist">${rows}</div>`}
   </div>`;
@@ -2730,7 +2736,7 @@ function lobbyCardHtml(l, mine) {
     <div class="lobhead"><h3>${esc(l.title)}</h3>${isOwner ? `<button class="mini del" data-action="lobclose" data-lid="${l.id}" data-tip="Закрыть лобби">✕</button>` : ''}</div>
     <div class="lobmeta">${esc(meta || '—')}</div>
     ${l.note ? `<div class="lobnote">${esc(l.note)}</div>` : ''}
-    <div class="lobrostlbl">Состав <span>${accepted.length}</span></div>
+    <div class="lobrostlbl">Состав <span>${accepted.length}</span>${isOwner ? `<button class="mini" data-action="lobadd" data-lid="${l.id}" data-tip="Добавить игрока из базы вручную" style="margin-left:auto">＋ добавить</button>` : ''}</div>
     <div class="lobrost">${roster}</div>
     ${pendHtml}
     <div class="lobfoot"><span class="lobcap">кэп: ${esc(l.creator_name || '')}</span><span style="flex:1"></span>${joinBtn}</div>
@@ -2776,6 +2782,41 @@ function lobbyCreateModal() {
     catch (e) { btn.disabled = false; btn.textContent = 'Создать'; uiAlert('Не получилось создать лобби — проверь вход и связь.'); }
   };
   setTimeout(() => { const n = ov.querySelector('#lbTitle'); if (n) n.focus(); }, 30);
+}
+function lobbyAddModal(lid) {
+  const l = LB.list.find(x => x.id === lid); if (!l) return;
+  if (!(isAdmin() || (myActorId() && l.created_by === myActorId()))) return;
+  const already = new Set(lobbySignups(lid).map(s => s.player_id));
+  const ov = openModal(`
+    <div class="mtitle">Добавить в «${esc(l.title)}»</div>
+    <div class="mbody" style="text-align:left">
+      <div class="note" style="margin-bottom:8px">Клик по игроку — сразу в состав, без заявки.</div>
+      <input id="laSearch" placeholder="🔎 Поиск по базе — имя или ник…" autocomplete="off">
+      <div id="laList" class="laList"><div class="note" style="padding:10px">Загрузка базы…</div></div>
+    </div>
+    <div class="mrow"><span style="flex:1"></span><button class="btn ghost" id="laClose">Закрыть</button></div>`, true);
+  const renderList = (q) => {
+    const box = ov.querySelector('#laList'); if (!box) return;
+    q = (q || '').trim().toLowerCase();
+    let players = DB.players.filter(p => !already.has(p.id));
+    if (q) players = players.filter(p => (p.name + ' ' + (p.nick || '')).toLowerCase().includes(q));
+    players = players.sort((a, b) => (b.mmr || 0) - (a.mmr || 0)).slice(0, 50);
+    box.innerHTML = players.length
+      ? players.map(p => `<button type="button" class="regpickitem laItem" data-pid="${p.id}">
+          ${avatarByName(p.nick || p.name)}<span class="rpn">${esc(p.name)}${p.nick ? ` <i>@${esc(p.nick)}</i>` : ''}</span>${posArr(p).length ? `<span class="rpp">${posArr(p).join('/')}</span>` : ''}<span class="rpm">${p.mmr != null ? p.mmr : '—'}</span>
+        </button>`).join('')
+      : '<div class="note" style="padding:10px">Никого не найдено. Игроки берутся из базы.</div>';
+    box.querySelectorAll('.laItem').forEach(btn => btn.onclick = async () => {
+      const ar = actorArgs(); if (!ar) return;
+      btn.disabled = true;
+      const ok = await lobbyRpc('rc_lobby_add', Object.assign({ p_lobby: lid, p_player: btn.dataset.pid }, ar), 'Добавлен в состав');
+      if (ok) { already.add(btn.dataset.pid); renderList(ov.querySelector('#laSearch').value); }
+    });
+  };
+  ov.querySelector('#laSearch').addEventListener('input', e => renderList(e.target.value));
+  ov.querySelector('#laClose').onclick = () => closeModal(ov);
+  ov.onclick = e => { if (e.target === ov) closeModal(ov); };
+  (DB.players.length ? Promise.resolve() : regLoad()).then(() => renderList(''));
 }
 async function lobbyRpc(fn, args, okMsg) {
   try { await loadSB(); const { error } = await sb.rpc(fn, args); if (error) throw error; await lobbyLoad(); if (okMsg) toast(okMsg); return true; }
@@ -3251,6 +3292,7 @@ document.addEventListener('click', async e => {
   else if (a === 'lobbies') { view = { screen: 'lobbies', tid: null }; render(); lobbyLoad(); }
   else if (a === 'lobrefresh') { lobbyLoad(); }
   else if (a === 'lobcreate') { lobbyCreateModal(); }
+  else if (a === 'lobadd') { lobbyAddModal(el.dataset.lid); }
   else if (a === 'lobjoin') {
     if (!isPlayer()) { uiAlert('Войди как игрок (🔒 → Я игрок), чтобы подать заявку.'); return; }
     lobbyRpc('rc_lobby_join', { p_username: rcPlayer.username, p_password: rcPlayer.pass, p_lobby: el.dataset.lid, p_note: '' }, 'Заявка отправлена 📨');
@@ -3436,6 +3478,7 @@ document.addEventListener('contextmenu', e => {
 });
 
 document.addEventListener('change', e => {
+  if (e.target.id === 'regMmr') { regMmrMin = +e.target.value; render(); return; }
   if (e.target.id === 'poAdv') {
     const t = curT();
     if (t) { t.opts.advance = +e.target.value; save(); render(); }

@@ -93,6 +93,20 @@ begin
   delete from public.lobby_signups where lobby_id = p_lobby and player_id = pid;
 end; $$;
 
+-- Капитан/организатор добавляет игрока вручную (сразу в состав, без заявки)
+create or replace function public.rc_lobby_add(p_secret text, p_username text, p_password text, p_lobby text, p_player text)
+returns void language plpgsql security definer set search_path = public, extensions as $$
+declare actor text; owner text; pnm text; ppos text;
+begin
+  actor := public.rc_actor(p_secret, p_username, p_password);
+  select created_by into owner from public.lobbies where id = p_lobby;
+  if actor <> 'admin' and actor <> owner then raise exception 'forbidden'; end if;
+  select coalesce(nick, name), pos into pnm, ppos from public.players where id = p_player;
+  insert into public.lobby_signups(id, lobby_id, player_id, player_name, pos, note, status)
+  values (gen_random_uuid()::text, p_lobby, p_player, pnm, ppos, null, 'accepted')
+  on conflict (lobby_id, player_id) do update set status = 'accepted';
+end; $$;
+
 -- Капитан/организатор принимает/отклоняет заявку
 create or replace function public.rc_lobby_signup_status(p_secret text, p_username text, p_password text, p_signup text, p_status text)
 returns void language plpgsql security definer set search_path = public, extensions as $$
@@ -121,6 +135,7 @@ grant execute on function public.rc_actor(text, text, text)                     
 grant execute on function public.rc_lobby_create(text, text, text, jsonb)                      to anon;
 grant execute on function public.rc_lobby_join(text, text, text, text)                         to anon;
 grant execute on function public.rc_lobby_leave(text, text, text)                              to anon;
+grant execute on function public.rc_lobby_add(text, text, text, text, text)                    to anon;
 grant execute on function public.rc_lobby_signup_status(text, text, text, text, text)          to anon;
 grant execute on function public.rc_lobby_close(text, text, text, text)                        to anon;
 
