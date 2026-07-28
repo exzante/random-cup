@@ -1450,7 +1450,8 @@ function playerStats(name) {
 function showPlayerStats(name) {
   const s = playerStats(name);
   const wr = (s.w + s.l) ? Math.round(s.w / (s.w + s.l) * 100) : 0;
-  const reg = DB.players.find(p => p.name.toLowerCase() === (name || '').toLowerCase());
+  const k = (name || '').toLowerCase();
+  const reg = DB.players.find(p => (p.nick || '').toLowerCase() === k) || DB.players.find(p => p.name.toLowerCase() === k);
   const peak = reg ? peakMmr(reg) : 0;
   const meta = reg ? `<div class="pmeta">
       ${reg.nick ? `<span>@${esc(reg.nick)}</span>` : ''}
@@ -3732,7 +3733,7 @@ function renderRegPick(q) {
     .filter(p => (p.name + ' ' + (p.nick || '')).toLowerCase().includes(q))
     .sort((a, b) => (b.mmr || 0) - (a.mmr || 0)).slice(0, 8);
   box.innerHTML = matches.length
-    ? matches.map(p => `<button type="button" class="regpickitem" data-action="pickreg" data-name="${esc(p.name)}">
+    ? matches.map(p => `<button type="button" class="regpickitem" data-action="pickreg" data-name="${esc(p.nick || p.name)}">
         ${avatarByName(p.nick || p.name)}<span class="rpn">${esc(p.name)}${p.nick ? ` <i>@${esc(p.nick)}</i>` : ''}</span>${posArr(p).length ? `<span class="rpp">${posArr(p).join('/')}</span>` : ''}<span class="rpm">${p.mmr != null ? p.mmr : '—'}</span>
       </button>`).join('')
     : '<div class="note" style="padding:9px 11px">Не найдено. Добавь игрока в базу заранее.</div>';
@@ -3789,7 +3790,7 @@ function teamFillModal(lineIdx) {
     if (q) players = players.filter(p => (p.name + ' ' + (p.nick || '')).toLowerCase().includes(q));
     players = players.sort((a, b) => (b.mmr || 0) - (a.mmr || 0)).slice(0, 50);
     box.innerHTML = players.length
-      ? players.map(p => `<button type="button" class="regpickitem tfItem" data-name="${esc(p.name)}">
+      ? players.map(p => `<button type="button" class="regpickitem tfItem" data-name="${esc(p.nick || p.name)}">
           ${avatarByName(p.nick || p.name)}<span class="rpn">${esc(p.name)}${p.nick ? ` <i>@${esc(p.nick)}</i>` : ''}</span>${posArr(p).length ? `<span class="rpp">${posArr(p).join('/')}</span>` : ''}<span class="rpm">${p.mmr != null ? p.mmr : '—'}</span>
         </button>`).join('')
       : `<div class="note" style="padding:10px">${cap > 0 ? `Никто не влезает в остаток (${rem}). Убери кого-то или подними лимит.` : 'Никого не найдено.'}</div>`;
