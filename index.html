@@ -73,10 +73,10 @@ textarea{resize:vertical;line-height:1.8}
   -webkit-mask-image:radial-gradient(150% 140% at 50% 12%, #000 64%, transparent 100%);
   mask-image:radial-gradient(150% 140% at 50% 12%, #000 64%, transparent 100%)}
 #bgfx .blob{position:absolute;border-radius:50%;filter:blur(95px)}
-#bgfx .b1{width:640px;height:640px;top:-220px;left:26%;background:radial-gradient(circle,rgba(212,175,55,.14),transparent 65%);animation:bgdrift 38s ease-in-out infinite}
-#bgfx .b2{width:560px;height:560px;bottom:-240px;right:-120px;background:radial-gradient(circle,rgba(45,212,191,.08),transparent 65%);animation:bgdrift 47s ease-in-out infinite reverse}
-#bgfx .b3{width:420px;height:420px;bottom:-140px;left:-140px;background:radial-gradient(circle,rgba(212,175,55,.08),transparent 65%);animation:bgdrift 56s ease-in-out infinite}
-#bgfx .b4{width:720px;height:360px;bottom:-160px;left:50%;margin-left:-360px;background:radial-gradient(circle,rgba(212,175,55,.07),transparent 68%);animation:bgdrift 60s ease-in-out infinite reverse}
+#bgfx .b1{width:680px;height:680px;top:-260px;left:22%;background:radial-gradient(circle,rgba(212,175,55,.08),transparent 68%)}
+#bgfx .b2{width:520px;height:520px;bottom:-240px;right:-140px;background:radial-gradient(circle,rgba(45,212,191,.05),transparent 68%)}
+#bgfx .b3{display:none}
+#bgfx .b4{display:none}
 @keyframes bgdrift{0%,100%{translate:0 0}50%{translate:-36px 24px}}
 .wrap{position:relative;z-index:1}
 
@@ -114,9 +114,8 @@ textarea{resize:vertical;line-height:1.8}
   clip-path:polygon(0 0,calc(100% - 8px) 0,100% 8px,100% 100%,8px 100%,0 calc(100% - 8px))}
 .btn:hover{background:var(--line2);transform:translateY(-1px)}
 .btn:active{transform:none}
-.btn.primary{background:linear-gradient(135deg,var(--gold2),var(--gold) 55%,var(--gold-deep));color:#161204;font-weight:600;
-  filter:drop-shadow(0 4px 14px rgba(212,175,55,.3))}
-.btn.primary:hover{filter:drop-shadow(0 6px 18px rgba(212,175,55,.5)) brightness(1.07)}
+.btn.primary{background:linear-gradient(180deg,var(--gold2),var(--gold-deep));color:#171204;font-weight:700}
+.btn.primary:hover{filter:brightness(1.06)}
 .btn.danger{color:var(--red);background:rgba(255,92,92,.09)}
 .btn.danger:hover{background:rgba(255,92,92,.18)}
 .btn.ghost{background:transparent;box-shadow:inset 0 0 0 1px var(--line2)}
@@ -143,9 +142,8 @@ textarea{resize:vertical;line-height:1.8}
 .hero .skyline{position:absolute;left:50%;bottom:-2px;transform:translateX(-50%);width:min(1240px,110%);height:auto;opacity:.5;pointer-events:none;
   -webkit-mask-image:linear-gradient(180deg,transparent 0%,#000 55%);mask-image:linear-gradient(180deg,transparent 0%,#000 55%)}
 .hero .eyebrow{font-family:var(--disp);font-size:11px;font-weight:500;letter-spacing:.55em;text-transform:uppercase;color:var(--muted);margin-bottom:10px}
-.hero h1{font-family:var(--disp);font-weight:700;font-size:clamp(44px,8vw,92px);letter-spacing:.05em;line-height:1.02;text-transform:uppercase;
-  background:var(--metal);background-size:220% auto;-webkit-background-clip:text;background-clip:text;color:transparent;
-  animation:shine 6s linear infinite;filter:drop-shadow(0 4px 24px rgba(212,175,55,.18))}
+.hero h1{font-family:var(--disp);font-weight:700;font-size:clamp(44px,8vw,92px);letter-spacing:.04em;line-height:1.02;text-transform:uppercase;
+  background:linear-gradient(180deg,#F6E6A8,#D4AF37 60%,#B8912A);-webkit-background-clip:text;background-clip:text;color:transparent}
 @keyframes shine{to{background-position:220% center}}
 .hero .rule{display:flex;align-items:center;gap:14px;justify-content:center;margin:16px auto 12px;max-width:420px}
 .hero .rule::before,.hero .rule::after{content:'';flex:1;height:1px;background:linear-gradient(90deg,transparent,var(--gold-deep))}
@@ -320,16 +318,13 @@ tr[data-pid] td:nth-child(2){cursor:grab}
 /* ================= podium ================= */
 .podium{--c:16px;--bl:linear-gradient(135deg,var(--gold2),var(--gold-deep) 60%,var(--gold));--bg2:linear-gradient(135deg,#171204,var(--panel) 65%);
   margin:6px 0 4px;padding:22px 30px;display:flex;align-items:center;gap:34px;flex-wrap:wrap;
-  filter:drop-shadow(0 10px 40px rgba(212,175,55,.12))}
-.podium::after{content:'';position:absolute;inset:0;background:linear-gradient(110deg,transparent 43%,rgba(255,243,206,.10) 50%,transparent 57%);
-  background-size:240% 100%;animation:sweep 3.6s ease-in-out infinite;pointer-events:none;z-index:2;
-  clip-path:polygon(0 0,calc(100% - var(--c)) 0,100% var(--c),100% 100%,var(--c) 100%,0 calc(100% - var(--c)))}
+  filter:drop-shadow(0 10px 40px rgba(0,0,0,.35))}
 @keyframes sweep{0%{background-position:160% 0}100%{background-position:-60% 0}}
 .podium .pchamp{display:flex;align-items:center;gap:16px}
 .podium .eyebrow{font-family:var(--disp);font-size:9.5px;font-weight:500;letter-spacing:.5em;text-transform:uppercase;color:var(--gold);display:block;margin-bottom:4px}
-.podium .champ-name{font-family:var(--disp);font-weight:700;font-size:clamp(22px,3vw,32px);letter-spacing:.06em;text-transform:uppercase;
-  background:var(--metal);background-size:220% auto;-webkit-background-clip:text;background-clip:text;color:transparent;animation:shine 5s linear infinite}
-.podium .av.lg{box-shadow:0 0 0 2px var(--gold),0 0 0 5px rgba(212,175,55,.25),0 6px 20px rgba(212,175,55,.35)}
+.podium .champ-name{font-family:var(--disp);font-weight:700;font-size:clamp(22px,3vw,32px);letter-spacing:.05em;text-transform:uppercase;
+  background:linear-gradient(180deg,#F6E6A8,#D4AF37 60%,#B8912A);-webkit-background-clip:text;background-clip:text;color:transparent}
+.podium .av.lg{box-shadow:0 0 0 2px var(--gold),0 0 0 4px rgba(212,175,55,.18)}
 .podium .minor{display:flex;align-items:center;gap:9px;color:var(--muted);font-size:13.5px}
 .podium .minor b{color:var(--text);font-weight:700}
 
