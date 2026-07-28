@@ -242,6 +242,8 @@ b.over-t{color:var(--red)}
 .tourinfo-row .prize{color:var(--gold2);font-weight:700}
 .tourinfo-links{display:flex;gap:8px;flex-wrap:wrap;margin-top:11px}
 .tourinfo-links .ilink{font-size:12px;color:var(--muted);align-self:center}
+.ilink-a{display:inline-flex;align-items:center;gap:4px;color:var(--gold2);font-weight:600;border-bottom:1px solid var(--gold-deep);white-space:nowrap;transition:color .12s,border-color .12s}
+.ilink-a:hover{color:var(--gold);border-color:var(--gold)}
 .tourinfo.empty2{--bl:var(--line2);display:flex;align-items:center;gap:12px;flex-wrap:wrap}
 .tourinfo.empty2 .note{flex:1;min-width:180px}
 .hidden{display:none !important}
@@ -810,6 +812,29 @@ function parseEntry(s) {
 function entryStr(p) { return p.members ? `${p.name}: ${p.members.join(', ')}` : p.name; }
 function uid() { return 'x' + Math.random().toString(36).slice(2, 10); }
 function esc(s) { return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+// Ссылка → {url, красивый лейбл}. Известные сервисы получают свой значок и название.
+const URL_RE = /^(?:https?:\/\/[^\s]+|(?:www\.|discord\.gg\/|discord\.com\/|wa\.me\/|t\.me\/|chat\.whatsapp\.com\/|instagram\.com\/|twitch\.tv\/|youtube\.com\/|youtu\.be\/)[^\s]+)$/i;
+function linkMeta(raw) {
+  const clean = raw.replace(/[.,;!?)]+$/, '');
+  const url = /^https?:\/\//i.test(clean) ? clean : 'https://' + clean.replace(/^\/+/, '');
+  let label;
+  if (/discord\.(gg|com)/i.test(url)) label = '💬 Discord';
+  else if (/(wa\.me|chat\.whatsapp\.com|whatsapp\.com)/i.test(url)) label = '🟢 WhatsApp';
+  else if (/(twitch\.tv|youtube\.com|youtu\.be)/i.test(url)) label = '📺 Стрим';
+  else if (/(t\.me|telegram\.me)/i.test(url)) label = '✈️ Telegram';
+  else if (/instagram\.com/i.test(url)) label = '📸 Instagram';
+  else label = '🔗 ' + url.replace(/^https?:\/\//i, '').replace(/\/+$/, '');
+  return { url, label };
+}
+// Превращает URL-ы внутри произвольного текста в кликабельные плашки, остальное экранирует.
+function linkify(str) {
+  if (!str) return '';
+  return String(str).split(/(\s+)/).map(tok => {
+    if (!URL_RE.test(tok)) return esc(tok);
+    const { url, label } = linkMeta(tok);
+    return `<a class="ilink-a" href="${esc(url)}" target="_blank" rel="noopener">${esc(label)}</a>`;
+  }).join('');
+}
 function curT() { return DB.tournaments.find(t => t.id === view.tid) || null; }
 function pname(t, pid) { return pid === 'BYE' ? 'bye' : (t.players[pid] ? t.players[pid].name : '?'); }
 
@@ -2121,9 +2146,50 @@ async function addPlayerByName(t, nn) {
   save(); render();
   toast(`${ent.name} в сетке — расширил до ${nextPow2(Object.keys(t.players).length)} слотов`, '🎮');
 }
-async function addPlayerFlow(t) {
-  const nn = await uiPrompt('Имя нового участника', '', 'Кто заходит?');
-  if (nn) await addPlayerByName(t, nn);
+/* Пикер участника: поиск по базе + выбор, либо ввод нового имени вручную.
+   onPick(name) выполняет само добавление в зависимости от контекста. */
+function pickPlayerModal(t, opts = {}) {
+  const ov = openModal(`
+    <div class="mtitle">${esc(opts.title || 'Добавить участника')}</div>
+    <div class="mbody" style="text-align:left">
+      <input id="apSearch" placeholder="🔎 Поиск по базе или новое имя…" autocomplete="off">
+      <div id="apList" class="laList"></div>
+    </div>
+    <div class="mrow"><span style="flex:1"></span><button class="btn ghost" id="apClose">Готово</button></div>`, true);
+  const usedSet = () => {
+    const s = new Set();
+    Object.values(t.players).forEach(p => {
+      if (p.name) s.add(p.name.toLowerCase());
+      (p.members || []).forEach(m => s.add(String(m).toLowerCase()));
+    });
+    return s;
+  };
+  const pick = async (nn) => { if (!nn) return; closeModal(ov); await opts.onPick(nn); };
+  const renderList = (q) => {
+    const box = ov.querySelector('#apList'); if (!box) return;
+    const used = usedSet();
+    q = (q || '').trim(); const ql = q.toLowerCase();
+    let players = DB.players.filter(p => !used.has((p.nick || '').toLowerCase()) && !used.has((p.name || '').toLowerCase()));
+    if (ql) players = players.filter(p => (p.name + ' ' + (p.nick || '')).toLowerCase().includes(ql));
+    players = players.sort((a, b) => (b.mmr || 0) - (a.mmr || 0)).slice(0, 50);
+    const exact = q && DB.players.some(p => (p.nick || '').toLowerCase() === ql || (p.name || '').toLowerCase() === ql);
+    const newBtn = q && !exact ? `<button type="button" class="regpickitem apNew" data-name="${esc(q)}"><span class="rpn">＋ Добавить нового: <b>${esc(q)}</b></span></button>` : '';
+    box.innerHTML = newBtn + (players.length
+      ? players.map(p => `<button type="button" class="regpickitem apItem" data-name="${esc(p.nick || p.name)}">
+          ${avatarByName(p.nick || p.name)}<span class="rpn">${esc(p.name)}${p.nick ? ` <i>@${esc(p.nick)}</i>` : ''}</span>${posArr(p).length ? `<span class="rpp">${posArr(p).join('/')}</span>` : ''}<span class="rpm">${p.mmr != null ? p.mmr : '—'}</span>
+        </button>`).join('')
+      : (q ? '' : `<div class="note" style="padding:10px">База пуста — впиши имя вручную.</div>`));
+    box.querySelectorAll('.apItem, .apNew').forEach(btn => btn.onclick = () => pick(btn.dataset.name));
+  };
+  const inp = ov.querySelector('#apSearch');
+  inp.addEventListener('input', e => renderList(e.target.value));
+  inp.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); pick(inp.value.trim()); } });
+  ov.querySelector('#apClose').onclick = () => closeModal(ov);
+  ov.onclick = e => { if (e.target === ov && ov._downSelf) closeModal(ov); };
+  (DB.players.length ? Promise.resolve() : regLoad()).then(() => { renderList(''); inp.focus(); });
+}
+function addPlayerFlow(t) {
+  pickPlayerModal(t, { title: 'Добавить участника', onPick: nn => addPlayerByName(t, nn) });
 }
 /* перемешать посев заново */
 async function reseedFlow(t) {
@@ -3266,16 +3332,18 @@ function tourInfoHtml(t) {
   const ed = canEdit(t);
   const chips = [];
   if (i.when) chips.push(`<span>📅 ${esc(i.when)}</span>`);
-  if (i.venue) chips.push(`<span>📍 ${esc(i.venue)}</span>`);
+  if (i.venue) chips.push(`<span>📍 ${linkify(i.venue)}</span>`);
   if (i.slots) chips.push(`<span>👥 ${esc(i.slots)}</span>`);
   if (t.opts && t.opts.mmrCap) chips.push(`<span>🎚 лимит ${t.opts.mmrCap} MMR</span>`);
   if (i.prize) chips.push(`<span class="prize">🏆 ${esc(i.prize)}</span>`);
   if (i.entry) chips.push(`<span>💵 ${esc(i.entry)}</span>`);
   const links = [];
   if (i.contact) {
-    const digits = (i.contact.match(/\d/g) || []).length;
-    if (digits >= 7) links.push(`<button class="btn sm ghost" data-action="wa" data-phone="${esc(i.contact)}" data-tip="Написать в WhatsApp">📞 ${esc(i.contact)}</button>`);
-    else links.push(`<span class="ilink">📞 ${esc(i.contact)}</span>`);
+    const c = i.contact.trim();
+    const digits = (c.match(/\d/g) || []).length;
+    if (URL_RE.test(c)) { const { url, label } = linkMeta(c); links.push(`<a class="btn sm ghost" href="${esc(url)}" target="_blank" rel="noopener">${esc(label)}</a>`); }
+    else if (digits >= 7) links.push(`<button class="btn sm ghost" data-action="wa" data-phone="${esc(c)}" data-tip="Написать в WhatsApp">📞 ${esc(c)}</button>`);
+    else links.push(`<span class="ilink">📞 ${esc(c)}</span>`);
   }
   if (i.stream) {
     const url = /^https?:\/\//.test(i.stream) ? i.stream : 'https://' + i.stream;
@@ -3287,7 +3355,7 @@ function tourInfoHtml(t) {
     : '';
   return `<div class="tourinfo cut">
     <div class="tourinfo-row">${chips.join('')}<span style="flex:1"></span>${ed ? `<button class="mini" data-action="editinfo" data-tip="Редактировать инфо">✎</button>` : ''}</div>
-    ${i.rules ? `<div class="tourinfo-rules">${esc(i.rules)}</div>` : ''}
+    ${i.rules ? `<div class="tourinfo-rules">${linkify(i.rules)}</div>` : ''}
     ${links.length ? `<div class="tourinfo-links">${links.join('')}</div>` : ''}
   </div>`;
 }
@@ -3920,13 +3988,14 @@ document.addEventListener('click', async e => {
   else if (a === 'fill') {
     if (!t) return;
     const m = t.matches[el.dataset.mid], si = +el.dataset.si;
-    const nn = await uiPrompt('Имя нового участника', '', 'Кто заходит?');
-    if (!nn) return;
-    const pid = uid();
-    t.players[pid] = { name: nn };
-    seatPlayer(t, m, si, pid);
-    save(); render();
-    toast(`${nn} в игре!`, '🎮');
+    pickPlayerModal(t, { title: 'Кто на это место?', onPick: nn => {
+      const ent = parseEntry(nn);
+      const pid = uid();
+      t.players[pid] = { name: ent.name, members: ent.members };
+      seatPlayer(t, m, si, pid);
+      save(); render();
+      toast(`${ent.name} в игре!`, '🎮');
+    } });
   }
   else if (a === 'gadd') {
     if (!t) return;
