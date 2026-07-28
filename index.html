@@ -733,12 +733,15 @@ function setZoom(z) {
 /* глобальный Ctrl+Z: перед каждым сохранением запоминаем прошлое состояние */
 const undoStack = [];
 function save() {
+  const t0 = view.screen === 'tour' ? curT() : null;
+  if (t0 && isAdmin()) t0.updatedAt = Date.now();   // метка для облачного архива
   const prev = localStorage.getItem(LS_KEY);
   if (prev) { undoStack.push(prev); if (undoStack.length > 50) undoStack.shift(); }
   localStorage.setItem(LS_KEY, JSON.stringify(DB));
   if (!applyingRemote) {
     const t = curT();
     if (t && t.share && !t.share.viewer) schedulePush(t);
+    if (t0) schedulePushArchive(t0);
   }
 }
 function undoLast() {
@@ -1503,6 +1506,7 @@ function createTournament(name, format, names, opts) {
   save();
   view = { screen: 'tour', tid: t.id };
   render();
+  if (isAdmin()) { t.updatedAt = Date.now(); schedulePushArchive(t); }
   toast('Турнир создан — удачи!', '🏆', true);
 }
 function doSwap(t, aSel, bSel) {
@@ -1598,6 +1602,7 @@ async function adminLogin() {
     if (data === true) {
       rcSecret = pass; localStorage.setItem('rc_secret', pass);
       renderTopbar(); render(); toast('Вход организатора', '🔓', true);
+      tourCloudLoad();   // подтянуть турниры из облака (восстановление истории)
     } else uiAlert('Неверный пароль организатора.');
   } catch (e) { uiAlert('Нет связи с базой — проверь интернет.'); }
 }
@@ -1660,6 +1665,50 @@ async function regDeleteRemote(id) {
   await loadSB();
   const { error } = await sb.rpc('rc_delete_player', { p_secret: rcSecret, p_id: id });
   if (error) throw error;
+}
+
+/* ===== облачный бэкап турниров (архив) ===== */
+const archiveTimers = {};
+function schedulePushArchive(t) {
+  if (!isAdmin() || !t || !t.id) return;
+  clearTimeout(archiveTimers[t.id]);
+  archiveTimers[t.id] = setTimeout(() => pushArchive(t.id), 700);
+}
+async function pushArchive(tid) {
+  const t = DB.tournaments.find(x => x.id === tid);
+  if (!t || !isAdmin()) return;
+  try {
+    await loadSB();
+    const data = JSON.parse(JSON.stringify(t));
+    await sb.rpc('rc_save_tournament', { p_secret: rcSecret, p_id: t.id, p_name: t.name || '', p_updated: t.updatedAt || Date.now(), p_data: data });
+  } catch (e) { /* нет связи/не накатан SQL — тихо, локально всё цело */ }
+}
+async function delArchive(id) {
+  if (!isAdmin()) return;
+  try { await loadSB(); await sb.rpc('rc_del_tournament', { p_secret: rcSecret, p_id: id }); } catch (e) {}
+}
+async function tourCloudLoad() {
+  if (!isAdmin()) return;
+  try {
+    await loadSB();
+    const { data, error } = await sb.from('rc_tournaments').select('id,data,updated_at');
+    if (error) throw error;
+    let added = 0, changed = false;
+    (data || []).forEach(row => {
+      const c = row.data; if (!c || !c.id) return;
+      const local = DB.tournaments.find(t => t.id === c.id);
+      if (!local) { DB.tournaments.push(c); added++; changed = true; }
+      else if ((row.updated_at || 0) > (local.updatedAt || 0)) {
+        DB.tournaments[DB.tournaments.indexOf(local)] = c; changed = true;
+      }
+    });
+    if (changed) {
+      DB.tournaments.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+      persistLocal();
+      if (view.screen === 'home') render();
+      if (added) toast(`Загружено из облака: ${added} турнир(ов)`, '☁️');
+    }
+  } catch (e) { /* тихо */ }
 }
 function serializeShared(t) {
   const c = Object.assign({}, t);
@@ -3415,6 +3464,7 @@ document.addEventListener('click', async e => {
     const tt = DB.tournaments.find(x => x.id === el.dataset.tid);
     if (tt && await uiConfirm(`Турнир «${tt.name}» удалится навсегда, вместе с результатами.`, { title: 'Удалить турнир?', ok: 'Удалить', danger: true })) {
       DB.tournaments = DB.tournaments.filter(x => x.id !== el.dataset.tid);
+      delArchive(el.dataset.tid);
       save(); render();
       toast('Турнир удалён');
     }
@@ -3934,6 +3984,7 @@ render();
 initLiveFromURL();
 lobbyLoad();          // для бейджа «вас откликнули» на главной
 ensureLobbyRealtime(); // живое обновление лобби/заявок
+tourCloudLoad();       // восстановить турниры из облака (если вошёл организатором)
 </script>
 </body>
 </html>
