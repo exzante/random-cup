@@ -505,6 +505,9 @@ canvas.confetti{position:fixed;inset:0;z-index:100;pointer-events:none}
 .rrow .rcol{flex:1;min-width:0;display:flex;flex-direction:column}
 .rrow .rname{min-width:0;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .rrow .rmem{font-size:10px;color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rrow .rmem .rmemb{font-size:10px;color:var(--dim);cursor:pointer}
+.rrow .rmem .rmemb:hover{color:var(--gold2)}
+.rrow .rmem i{margin:0 3px;color:var(--dim);font-style:normal}
 .rrow .rloc{font-family:var(--disp);font-size:9px;font-weight:500;color:var(--dim);text-transform:uppercase;letter-spacing:.14em;white-space:nowrap}
 .rrow .rtools{display:none;gap:1px}
 .rrow:hover .rtools{display:inline-flex}
@@ -849,16 +852,29 @@ function avatarByName(n, lg) {
 }
 function avatar(t, pid, lg) { return avatarByName(pname(t, pid), lg); }
 /* зал славы: медали по всем турнирам, игроки склеиваются по имени */
+/* Люди внутри записи участника t.players[pid]: массив отображаемых имён (ник||имя).
+   Команда → её игроки (по memberIds из базы, иначе по строкам members); соло → сам участник.
+   Благодаря этому статистика и медали начисляются каждому человеку, а не «команде». */
+function entryHumans(pl) {
+  if (!pl) return [];
+  if (pl.memberIds && pl.memberIds.length) {
+    const out = pl.memberIds.map(id => { const p = regById(id); return p ? (p.nick || p.name) : null; }).filter(Boolean);
+    if (out.length) return out;
+  }
+  if (pl.members && pl.members.length) return pl.members.slice();
+  return pl.name ? [pl.name] : [];
+}
 function hallOfFame() {
   const agg = {};
   for (const t of DB.tournaments) {
     const p = podium(t);
     [['first', 'g'], ['second', 's'], ['third', 'b']].forEach(([k, f]) => {
       if (!p[k]) return;
-      const nm = pname(t, p[k]);
-      const key = nm.toLowerCase();
-      if (!agg[key]) agg[key] = { name: nm, g: 0, s: 0, b: 0 };
-      agg[key][f]++;
+      entryHumans(t.players[p[k]]).forEach(nm => {
+        const key = nm.toLowerCase();
+        if (!agg[key]) agg[key] = { name: nm, g: 0, s: 0, b: 0 };
+        agg[key][f]++;
+      });
     });
   }
   return Object.values(agg).sort((a, b) => b.g - a.g || b.s - a.s || b.b - a.b).slice(0, 8);
@@ -1489,10 +1505,19 @@ function renderTimerW() {
 
 /* ================= статистика игрока ================= */
 function playerStats(name) {
-  const key = name.toLowerCase();
-  const st = { name, g: 0, s: 0, b: 0, w: 0, l: 0, tours: 0, rows: [] };
+  const key0 = (name || '').toLowerCase();
+  // Резолвим игрока из базы, чтобы учесть и имя, и ник, и id (для команд с memberIds).
+  const reg = DB.players.find(p => (p.nick || '').toLowerCase() === key0)
+           || DB.players.find(p => (p.name || '').toLowerCase() === key0);
+  const keys = new Set([key0]);
+  if (reg) { if (reg.name) keys.add(reg.name.toLowerCase()); if (reg.nick) keys.add(reg.nick.toLowerCase()); }
+  const rid = reg ? reg.id : null;
+  const disp = reg ? (reg.nick || reg.name) : name;
+  const hit = pl => (rid && pl.memberIds && pl.memberIds.includes(rid))
+    || entryHumans(pl).some(h => keys.has(String(h).toLowerCase()));
+  const st = { name: disp, g: 0, s: 0, b: 0, w: 0, l: 0, tours: 0, rows: [] };
   for (const t of DB.tournaments) {
-    const pids = Object.keys(t.players).filter(pid => t.players[pid].name.toLowerCase() === key);
+    const pids = Object.keys(t.players).filter(pid => hit(t.players[pid]));
     if (!pids.length) continue;
     st.tours++;
     for (const m of Object.values(t.matches)) {
@@ -1598,7 +1623,7 @@ function draftForm(t) {
   teams.forEach(tm => {
     const id = uid();
     const members = tm.members.map(pid => { const p = regById(pid); return p ? (p.nick || p.name) : pid; });
-    t.players[id] = { name: tm.name || members[0] || 'Команда', members };
+    t.players[id] = { name: tm.name || members[0] || 'Команда', members, memberIds: tm.members.slice() };
     pids.push(id);
   });
   buildBracket(t, pids);
@@ -2613,10 +2638,10 @@ function renderRoster() {
       loc = g ? 'гр. ' + g.name : '';
     }
     const pl = t.players[pid];
-    const mem = pl && pl.members ? pl.members.join(' · ') : '';
+    const mem = pl && pl.members ? pl.members.map(m => `<button class="rmemb" data-action="pstats" data-name="${esc(m)}" data-tip="Статистика игрока">${esc(m)}</button>`).join('<i>·</i>') : '';
     return `<div class="rrow">
       ${avatar(t, pid)}
-      <span class="rcol"><button class="rname" data-action="pstats" data-name="${esc(pname(t, pid))}" data-tip="Статистика">${esc(pname(t, pid))}</button>${mem ? `<span class="rmem">${esc(mem)}</span>` : ''}</span>
+      <span class="rcol"><button class="rname" data-action="pstats" data-name="${esc(pname(t, pid))}" data-tip="Статистика">${esc(pname(t, pid))}</button>${mem ? `<span class="rmem">${mem}</span>` : ''}</span>
       <span class="rloc">${esc(loc)}</span>
       <span class="rtools">
         <button class="mini" data-tip="Переименовать" data-action="rename" data-pid="${pid}">✎</button>
