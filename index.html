@@ -2499,7 +2499,7 @@ let regPosFilter = 'all';   // all | one | flex
 let regMmrMin = 0;          // фильтр по рейтингу
 function posChipHtml(p) {
   const multi = posArr(p).length > 1;
-  return `<button class="poschip cut ${multi ? 'multi' : ''}" data-action="pprofile" data-pid="${p.id}" data-tip="${multi ? 'Играет на нескольких позициях' : ''}">
+  return `<button class="poschip cut ${multi ? 'multi' : ''}" data-action="pprofile" data-pid="${p.id}" data-search="${esc((p.name + ' ' + (p.nick || '')).toLowerCase())}" data-tip="${multi ? 'Играет на нескольких позициях' : ''}">
     ${avatarByName(p.nick || p.name)}<span class="pcn">${esc(p.nick || p.name)}</span>${p.mmr != null ? `<span class="pcm">${p.mmr}</span>` : ''}${p.lft ? '<span class="pclft" data-tip="Ищет команду">🔎</span>' : ''}
   </button>`;
 }
@@ -2547,8 +2547,8 @@ function screenPlayers() {
       <select id="regMmr" class="regmmrsel" data-tip="Фильтр по рейтингу">${[[0, 'Любой MMR'], [2000, '2000+'], [4000, '4000+'], [6000, '6000+'], [8000, '8000+'], [10000, '10000+']].map(([v, l]) => `<option value="${v}" ${regMmrMin === v ? 'selected' : ''}>${l}</option>`).join('')}</select>
       <span class="segbtns" data-tip="Фильтр по позициям">${[['all', 'Все'], ['one', '1 поз.'], ['flex', 'Флекс']].map(([v, l]) => `<button class="btn sm ${regPosFilter === v ? 'primary' : 'ghost'}" data-action="posfilter" data-val="${v}">${l}</button>`).join('')}</span>
       <button class="btn sm ghost" data-action="regview" data-tip="Переключить вид">${byPos ? '☰ Списком' : '⛃ По позициям'}</button>
-      ${byPos ? '' : `<button class="btn sm ghost" data-action="lftfilter" data-tip="Показать только тех, кто ищет команду">🔎 LFT${lftCount ? ` (${lftCount})` : ''}</button>
-      <input id="pSearch" class="regsearch" placeholder="Поиск по имени или нику…">`}
+      ${byPos ? '' : `<button class="btn sm ghost" data-action="lftfilter" data-tip="Показать только тех, кто ищет команду">🔎 LFT${lftCount ? ` (${lftCount})` : ''}</button>`}
+      <input id="pSearch" class="regsearch" placeholder="Поиск по имени или нику…">
       ${admin ? `<button class="btn primary sm" data-action="pedit" data-tip="Добавить нового игрока">＋ Игрок</button>` : ''}
     </div>
     ${!admin && !isPlayer() ? `<div class="regnote">👁 Режим просмотра. Добавляет и меняет игроков администратор — <b data-action="adminlogin" style="cursor:pointer;color:var(--gold2)">войти</b>.</div>` : ''}
@@ -3833,8 +3833,12 @@ document.addEventListener('input', e => {
   if (e.target.id === 'cCap') updateCapInfo();
   if (e.target.id === 'pSearch') {
     const q = e.target.value.trim().toLowerCase();
-    document.querySelectorAll('.prow').forEach(el => {
-      el.style.display = (!q || (el.dataset.search || '').includes(q)) ? '' : 'none';
+    const match = el => !q || (el.dataset.search || '').includes(q);
+    document.querySelectorAll('.prow').forEach(el => { el.style.display = match(el) ? '' : 'none'; });
+    document.querySelectorAll('.poschip').forEach(el => { el.style.display = match(el) ? '' : 'none'; });
+    document.querySelectorAll('.posrow').forEach(row => {
+      const anyVis = [...row.querySelectorAll('.poschip')].some(c => c.style.display !== 'none');
+      row.style.display = (q && !anyVis) ? 'none' : '';
     });
   }
 });
