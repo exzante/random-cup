@@ -540,6 +540,34 @@ canvas.confetti{position:fixed;inset:0;z-index:100;pointer-events:none}
 .prow.go{--bl:linear-gradient(135deg,var(--green),var(--line) 70%)}
 .poschip.going{--bl:linear-gradient(135deg,var(--green),var(--gold-deep))}
 .poschip .pcgo{font-size:11px;margin-right:-2px;flex-shrink:0}
+/* капитанский драфт */
+.drafttools{font-size:12.5px;color:var(--muted);background:var(--panel2);border:1px solid var(--line);padding:9px 13px;margin-bottom:8px;line-height:1.55}
+.drafttools b{color:var(--gold2)}
+.draftgrid{display:grid;grid-template-columns:320px 1fr;gap:16px;align-items:start;margin-top:14px}
+.draftcol-h{font-family:var(--disp);font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:var(--gold2);margin-bottom:10px;display:flex;gap:8px}
+.draftcol-h span{color:var(--dim)}
+.draftpool{--c:12px;--bl:var(--line);padding:14px 15px}
+.draftpool-list{display:flex;flex-direction:column;gap:6px;max-height:72vh;overflow:auto}
+.dpi{display:flex;align-items:center;gap:8px;background:var(--panel2);border:1px solid var(--line);padding:5px 8px}
+.dpi .dpn{flex:1;min-width:0;font-weight:600;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dpi .dpp{font-size:10px;color:var(--gold2);background:var(--gold-soft);border:1px solid var(--gold-deep);padding:1px 5px;flex-shrink:0}
+.dpi .dpm{font-family:var(--disp);font-weight:700;font-size:12px;color:var(--gold2);flex-shrink:0}
+.dpi .dcap{color:var(--gold2);white-space:nowrap;font-size:11px;flex-shrink:0}
+.draftteams{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,240px),1fr));gap:12px}
+.dteam{--c:12px;--bl:var(--line);padding:12px 13px;display:flex;flex-direction:column}
+.dteam.over{--bl:rgba(255,92,92,.5)}
+.dteam-h{display:flex;align-items:center;gap:8px;margin-bottom:9px}
+.dteam-h b{font-family:var(--disp);font-size:14px;letter-spacing:.04em;color:var(--gold2)}
+.dteam-mmr{font-family:var(--disp);font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums;margin-left:auto}
+.dteam-mmr .crem{color:var(--green)}
+.dteam-mmr .cbad{color:var(--red);font-weight:800}
+.dteam-list{display:flex;flex-direction:column;gap:5px;margin-bottom:8px}
+.dmem{display:flex;align-items:center;gap:6px;background:var(--panel2);border:1px solid var(--line);padding:4px 7px;font-size:12.5px}
+.dmem.cap{border-color:var(--gold-deep);background:var(--gold-soft)}
+.dmem .dmn{flex:1;min-width:0;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dmem small{color:var(--dim);font-variant-numeric:tabular-nums}
+.dadd{color:var(--gold2);align-self:flex-start;font-size:12px}
+@media (max-width:760px){.draftgrid{grid-template-columns:1fr}}
 .reglist.lftonly .prow:not([data-lft]){display:none}
 .creds{display:flex;align-items:center;gap:12px;padding:9px 13px;background:var(--panel2);border:1px solid var(--line);margin-top:8px}
 .creds span{font-family:var(--disp);font-size:10px;letter-spacing:.18em;text-transform:uppercase;color:var(--dim);width:60px}
@@ -1486,12 +1514,11 @@ function showPlayerStats(name) {
 }
 
 /* ================= actions ================= */
-function createTournament(name, format, names, opts) {
-  const t = { id: uid(), name, format, createdAt: Date.now(),
-    players: {}, matches: {}, opts,
-    groups: null, phase: null,
-    finalId: null, thirdId: null, gfId: null, gf2Id: null, lbFinalId: null };
-  const pids = names.map(n => { const id = uid(); const ent = parseEntry(n); t.players[id] = { name: ent.name, members: ent.members }; return id; });
+// Строит сетку/группы турнира из массива pid (участники уже в t.players)
+function buildBracket(t, pids) {
+  const format = t.format, opts = t.opts;
+  t.matches = {}; t.groups = null; t.phase = null;
+  t.finalId = null; t.thirdId = null; t.gfId = null; t.gf2Id = null; t.lbFinalId = null;
   if (format === 'single') {
     const res = buildElim(t, pids, 'wb', opts.thirdPlace);
     t.finalId = res.finalId; t.thirdId = res.thirdId;
@@ -1500,7 +1527,6 @@ function createTournament(name, format, names, opts) {
     buildDouble(t, pids);
     resolveByes(t);
   } else if (format === 'rr') {
-    t.phase = null;
     t.groups = [{ id: uid(), name: 'Таблица', pids: pids.slice() }];
     genGroupMatches(t, t.groups[0]);
   } else {
@@ -1511,12 +1537,49 @@ function createTournament(name, format, names, opts) {
     snakeInto(t.groups, pids);
     t.groups.forEach(g => genGroupMatches(t, g));
   }
+}
+function createTournament(name, format, names, opts) {
+  const t = { id: uid(), name, format, createdAt: Date.now(),
+    players: {}, matches: {}, opts,
+    groups: null, phase: null,
+    finalId: null, thirdId: null, gfId: null, gf2Id: null, lbFinalId: null };
+  const pids = names.map(n => { const id = uid(); const ent = parseEntry(n); t.players[id] = { name: ent.name, members: ent.members }; return id; });
+  buildBracket(t, pids);
   DB.tournaments.unshift(t);
   save();
   view = { screen: 'tour', tid: t.id };
   render();
   if (isAdmin()) { t.updatedAt = Date.now(); schedulePushArchive(t); }
   toast('Турнир создан — удачи!', '🏆', true);
+}
+// Турнир-драфт: создаётся пустым, команды собираются на странице турнира
+function createDraftTournament(name, format, opts) {
+  const t = { id: uid(), name, format, createdAt: Date.now(),
+    players: {}, matches: {}, opts,
+    groups: null, phase: 'draft', draftTeams: [],
+    finalId: null, thirdId: null, gfId: null, gf2Id: null, lbFinalId: null };
+  DB.tournaments.unshift(t);
+  save();
+  view = { screen: 'tour', tid: t.id };
+  render(); regLoad();
+  if (isAdmin()) { t.updatedAt = Date.now(); schedulePushArchive(t); }
+  toast('Турнир создан — собери команды драфтом 🎖', '🎖', true);
+}
+// Из собранных команд строим сетку
+function draftForm(t) {
+  const teams = (t.draftTeams || []).filter(tm => tm.members && tm.members.length);
+  if (teams.length < 2) { uiAlert('Нужно минимум две команды.'); return; }
+  t.players = {}; const pids = [];
+  teams.forEach(tm => {
+    const id = uid();
+    const members = tm.members.map(pid => { const p = regById(pid); return p ? (p.nick || p.name) : pid; });
+    t.players[id] = { name: tm.name || members[0] || 'Команда', members };
+    pids.push(id);
+  });
+  buildBracket(t, pids);
+  delete t.draftTeams;
+  save(); render();
+  toast('Сетка сформирована — погнали!', '🔥', true);
 }
 function doSwap(t, aSel, bSel) {
   const ma = t.matches[aSel.mid], mb = t.matches[bSel.mid];
@@ -1657,7 +1720,7 @@ async function regLoad() {
     DB.players = (data || []).map(playerFromRow);
     persistLocal();
     regSyncing = false;
-    if (view.screen === 'players') render();
+    if (view.screen === 'players' || (view.screen === 'tour' && curT() && curT().phase === 'draft')) render();
     return true;
   } catch (e) {
     regSyncing = false;
@@ -3085,27 +3148,33 @@ function screenCreate() {
     <div class="frow">
       <label class="lbl">Участники</label>
       <div class="modetog">
-        <button type="button" class="btn sm ${createMode === 'solo' ? 'primary' : 'ghost'}" data-action="cmode" data-mode="solo">👤 Соло игроки</button>
+        <button type="button" class="btn sm ${createMode === 'solo' ? 'primary' : 'ghost'}" data-action="cmode" data-mode="solo">👤 Соло</button>
         <button type="button" class="btn sm ${createMode === 'teams' ? 'primary' : 'ghost'}" data-action="cmode" data-mode="teams">👥 Команды</button>
+        <button type="button" class="btn sm ${createMode === 'draft' ? 'primary' : 'ghost'}" data-action="cmode" data-mode="draft">🎖 Капитанский драфт</button>
       </div>
-      <div id="soloTools" class="${createMode === 'teams' ? 'hidden' : ''}">
-        <div class="regpick">
-          <input id="cReg" placeholder="🔎 Добавить из базы — имя или ник…" autocomplete="off">
-          <div id="cRegList" class="regpicklist"></div>
+      <div id="draftTools" class="drafttools ${createMode === 'draft' ? '' : 'hidden'}">
+        <b>Драфт:</b> турнир создастся пустым. Пул игроков соберётся из тех, кому на странице <b>«Игроки»</b> поставишь метку <b>«✅ идёт»</b>. Капитанов и команды соберёшь уже на странице турнира.
+      </div>
+      <div id="partBody" class="${createMode === 'draft' ? 'hidden' : ''}">
+        <div id="soloTools" class="${createMode === 'teams' ? 'hidden' : ''}">
+          <div class="regpick">
+            <input id="cReg" placeholder="🔎 Добавить из базы — имя или ник…" autocomplete="off">
+            <div id="cRegList" class="regpicklist"></div>
+          </div>
         </div>
+        <div id="teamTools" class="teamtools ${createMode === 'teams' ? '' : 'hidden'}">
+          <button type="button" class="btn sm ghost" data-action="addteam">＋ Команда</button>
+          <label class="chk" data-tip="Суммарный MMR команды не должен превышать лимит. Пусто — без лимита. MMR из базы.">Лимит MMR:&nbsp;<input id="cCap" type="number" inputmode="numeric" placeholder="без лимита" style="width:120px"></label>
+          <span class="note">Строка = команда «Название: игрок1, игрок2». Добор — «＋ игрок» у команды ниже.</span>
+        </div>
+        <textarea id="cPlayers" rows="8" placeholder="${createMode === 'teams' ? 'Тигры: Азамат, Ерлан&#10;Волки: Данияр, Санжар&#10;...' : 'Азамат&#10;Данияр&#10;Ерлан&#10;...'}"></textarea>
+        <div style="display:flex;align-items:center;gap:12px;margin-top:8px">
+          <div class="pcount" id="pCount" style="margin:0;flex:1"></div>
+          <button type="button" class="btn sm ghost" data-action="seedmmr" data-tip="Посеять по MMR из базы: сильные разведены (в сетке — по краям, в группах — «змейкой»)">📊 По рейтингу</button>
+          <button type="button" class="btn sm ghost" data-action="shufflecreate" data-tip="Случайный порядок — случайный посев">🎲 Перемешать</button>
+        </div>
+        <div id="capInfo" class="capinfo"></div>
       </div>
-      <div id="teamTools" class="teamtools ${createMode === 'solo' ? 'hidden' : ''}">
-        <button type="button" class="btn sm ghost" data-action="addteam">＋ Команда</button>
-        <label class="chk" data-tip="Суммарный MMR команды не должен превышать лимит. Пусто — без лимита. MMR из базы.">Лимит MMR:&nbsp;<input id="cCap" type="number" inputmode="numeric" placeholder="без лимита" style="width:120px"></label>
-        <span class="note">Строка = команда «Название: игрок1, игрок2». Добор — «＋ игрок» у команды ниже.</span>
-      </div>
-      <textarea id="cPlayers" rows="8" placeholder="${createMode === 'teams' ? 'Тигры: Азамат, Ерлан&#10;Волки: Данияр, Санжар&#10;...' : 'Азамат&#10;Данияр&#10;Ерлан&#10;...'}"></textarea>
-      <div style="display:flex;align-items:center;gap:12px;margin-top:8px">
-        <div class="pcount" id="pCount" style="margin:0;flex:1"></div>
-        <button type="button" class="btn sm ghost" data-action="seedmmr" data-tip="Посеять по MMR из базы: сильные разведены (в сетке — по краям, в группах — «змейкой»)">📊 По рейтингу</button>
-        <button type="button" class="btn sm ghost" data-action="shufflecreate" data-tip="Случайный порядок — случайный посев">🎲 Перемешать</button>
-      </div>
-      <div id="capInfo" class="capinfo"></div>
     </div>
     <div class="frow inline" id="optThird">
       <label class="chk"><input type="checkbox" id="cThird" checked> Матч за 3-е место</label>
@@ -3249,9 +3318,99 @@ function infoEditModal() {
     save(); closeModal(ov); render(); toast('Инфо сохранено', '✓');
   };
 }
+/* ================= капитанский драфт ================= */
+function draftPoolItem(p, admin) {
+  return `<div class="dpi">
+    ${avatarByName(p.nick || p.name)}<span class="dpn">${esc(p.nick || p.name)}</span>${posArr(p).length ? `<span class="dpp">${posArr(p).join('/')}</span>` : ''}<span class="dpm">${p.mmr != null ? p.mmr : '—'}</span>
+    ${admin ? `<button class="mini dcap" data-action="draftcap" data-pid="${p.id}" data-tip="Сделать капитаном (создать команду)">★ Кэп</button>` : ''}
+  </div>`;
+}
+function draftTeamCard(t, tm, cap, admin) {
+  const sum = tm.members.reduce((a, id) => { const p = regById(id); return a + ((p && p.mmr) || 0); }, 0);
+  const rem = cap - sum, over = cap > 0 && sum > cap;
+  const members = tm.members.map(id => {
+    const p = regById(id), isCap = id === tm.captainId;
+    const nm = p ? (p.nick || p.name) : id;
+    return `<span class="dmem ${isCap ? 'cap' : ''}">${isCap ? '★' : ''}${avatarByName(nm)}<span class="dmn">${esc(nm)}</span><small>${p && p.mmr != null ? p.mmr : ''}</small>${admin ? `<button class="mini del" data-action="draftremmem" data-tid="${tm.id}" data-pid="${id}" data-tip="${isCap ? 'Убрать всю команду' : 'Вернуть в пул'}">✕</button>` : ''}</span>`;
+  }).join('');
+  return `<div class="dteam cut ${over ? 'over' : ''}">
+    <div class="dteam-h"><b>${esc(tm.name)}</b><span class="dteam-mmr">${sum}${cap > 0 ? ` / ${cap}` : ''}${cap > 0 ? (over ? ` <span class="cbad">−${sum - cap}</span>` : ` <span class="crem">+${rem}</span>`) : ''}</span>${admin ? `<button class="mini del" data-action="draftremteam" data-tid="${tm.id}" data-tip="Удалить команду">✕</button>` : ''}</div>
+    <div class="dteam-list">${members || '<span class="note">пусто</span>'}</div>
+    ${admin ? `<button class="mini dadd" data-action="draftadd" data-tid="${tm.id}" data-tip="Добавить игрока из пула">＋ игрок</button>` : ''}
+  </div>`;
+}
+function draftHtml(t) {
+  const admin = isAdmin();
+  t.draftTeams = t.draftTeams || [];
+  const assigned = new Set();
+  t.draftTeams.forEach(tm => tm.members.forEach(id => assigned.add(id)));
+  const pool = DB.players.filter(p => p.going && !assigned.has(p.id)).sort((a, b) => (b.mmr || 0) - (a.mmr || 0));
+  const cap = t.opts.mmrCap || 0;
+  const ready = t.draftTeams.filter(x => x.members.length).length;
+  return `<div class="draftwrap">
+    <div class="pophdr cut">
+      <span class="tl">🎖 Драфт</span>
+      <span class="note">Пул — игроки с меткой «идёт». Ставь капитанов и раздавай игроков по командам.</span>
+      <span style="flex:1"></span>
+      ${admin ? `<button class="btn primary sm" data-action="draftform" ${ready < 2 ? 'disabled' : ''} data-tip="Собрать сетку/группы из команд">Сформировать сетку →</button>` : ''}
+    </div>
+    <div class="draftgrid">
+      <div class="draftpool cut">
+        <div class="draftcol-h">Пул <span>${pool.length}</span></div>
+        <div class="draftpool-list">${pool.length ? pool.map(p => draftPoolItem(p, admin)).join('') : `<div class="note" style="padding:12px">Пул пуст. Отметь игроков <b>«✅ идёт»</b> на странице «Игроки».</div>`}</div>
+      </div>
+      <div class="draftteamswrap">
+        <div class="draftcol-h">Команды <span>${t.draftTeams.length}</span></div>
+        <div class="draftteams">${t.draftTeams.length ? t.draftTeams.map(tm => draftTeamCard(t, tm, cap, admin)).join('') : `<div class="note" style="padding:12px">Команд нет. Нажми <b>«★ Кэп»</b> у игрока в пуле, чтобы сделать его капитаном.</div>`}</div>
+      </div>
+    </div>
+  </div>`;
+}
+function draftAddModal(t, tid) {
+  const tm = (t.draftTeams || []).find(x => x.id === tid); if (!tm || !isAdmin()) return;
+  const cap = t.opts.mmrCap || 0;
+  const ov = openModal(`
+    <div class="mtitle">В команду «${esc(tm.name)}»</div>
+    <div class="mbody" style="text-align:left">
+      <div class="note" id="daSum" style="margin-bottom:8px"></div>
+      <input id="daSearch" placeholder="🔎 Поиск по пулу…" autocomplete="off">
+      <div id="daList" class="laList"></div>
+    </div>
+    <div class="mrow"><span style="flex:1"></span><button class="btn ghost" id="daClose">Готово</button></div>`, true);
+  const renderList = (q) => {
+    const box = ov.querySelector('#daList'); if (!box) return;
+    const t2 = curT(); const tm2 = (t2.draftTeams || []).find(x => x.id === tid);
+    if (!tm2) { closeModal(ov); return; }
+    const assigned = new Set(); t2.draftTeams.forEach(x => x.members.forEach(id => assigned.add(id)));
+    const sum = tm2.members.reduce((a, id) => { const p = regById(id); return a + ((p && p.mmr) || 0); }, 0);
+    const rem = cap > 0 ? cap - sum : Infinity;
+    ov.querySelector('#daSum').innerHTML = `Сумма <b>${sum}</b>${cap > 0 ? ` · осталось <b>${rem}</b> до ${cap}` : ''}`;
+    q = (q || '').trim().toLowerCase();
+    let players = DB.players.filter(p => p.going && !assigned.has(p.id));
+    if (cap > 0) players = players.filter(p => (p.mmr || 0) <= rem);
+    if (q) players = players.filter(p => (p.name + ' ' + (p.nick || '')).toLowerCase().includes(q));
+    players.sort((a, b) => (b.mmr || 0) - (a.mmr || 0));
+    box.innerHTML = players.length
+      ? players.map(p => `<button type="button" class="regpickitem daItem" data-pid="${p.id}">
+          ${avatarByName(p.nick || p.name)}<span class="rpn">${esc(p.nick || p.name)}</span>${posArr(p).length ? `<span class="rpp">${posArr(p).join('/')}</span>` : ''}<span class="rpm">${p.mmr != null ? p.mmr : '—'}</span>
+        </button>`).join('')
+      : `<div class="note" style="padding:10px">${cap > 0 ? `Никто не влезает в остаток (${rem}) или пул пуст.` : 'Пул пуст.'}</div>`;
+    box.querySelectorAll('.daItem').forEach(btn => btn.onclick = () => {
+      const cur = curT(); const c = (cur.draftTeams || []).find(x => x.id === tid);
+      if (c && !c.members.includes(btn.dataset.pid)) { c.members.push(btn.dataset.pid); save(); }
+      renderList(ov.querySelector('#daSearch').value);
+      if (view.screen === 'tour') { /* обновим фон позже */ }
+    });
+  };
+  ov.querySelector('#daSearch').addEventListener('input', e => renderList(e.target.value));
+  ov.querySelector('#daClose').onclick = () => { closeModal(ov); render(); };
+  ov.onclick = e => { if (e.target === ov && ov._downSelf) { closeModal(ov); render(); } };
+  (DB.players.length ? Promise.resolve() : regLoad()).then(() => renderList(''));
+}
 function screenTour() {
   const t = curT();
   if (!t) { view = { screen: 'home', tid: null }; return screenHome(); }
+  if (t.phase === 'draft') return tourInfoHtml(t) + draftHtml(t);
   const champ = podium(t).first;
   let html = coachHtml() + tourInfoHtml(t) + podiumHtml(t);
 
@@ -3483,7 +3642,7 @@ function drawEdges() {
 window.addEventListener('resize', () => requestAnimationFrame(drawEdges));
 
 /* ================= events ================= */
-const MUT_ACTIONS = new Set(['win', 'score', 'draw', 'undo', 'rename', 'pdel', 'fill', 'gadd', 'gdel', 'makepo', 'resetpo', 'reseed', 'addp', 'trename', 'raddgo', 'rdel', 'editinfo']);
+const MUT_ACTIONS = new Set(['win', 'score', 'draw', 'undo', 'rename', 'pdel', 'fill', 'gadd', 'gdel', 'makepo', 'resetpo', 'reseed', 'addp', 'trename', 'raddgo', 'rdel', 'editinfo', 'draftcap', 'draftadd', 'draftremmem', 'draftremteam', 'draftform']);
 document.addEventListener('click', async e => {
   const el = e.target.closest('[data-action]');
   if (!el || el.disabled) return;
@@ -3498,7 +3657,30 @@ document.addEventListener('click', async e => {
   else if (a === 'help') showHelp();
   else if (a === 'coachoff') { localStorage.setItem('turnir_coach2', '1'); render(); }
   else if (a === 'editinfo') { infoEditModal(); }
-  else if (a === 'open') { view = { screen: 'tour', tid: el.dataset.tid }; render(); }
+  else if (a === 'draftcap') {
+    if (!t || !isAdmin()) return;
+    const p = regById(el.dataset.pid); if (!p) return;
+    t.draftTeams = t.draftTeams || [];
+    t.draftTeams.push({ id: uid(), captainId: p.id, name: p.nick || p.name, members: [p.id] });
+    save(); render();
+  }
+  else if (a === 'draftadd') { if (t && isAdmin()) draftAddModal(t, el.dataset.tid); }
+  else if (a === 'draftremmem') {
+    if (!t || !isAdmin()) return;
+    const tm = (t.draftTeams || []).find(x => x.id === el.dataset.tid); if (!tm) return;
+    if (el.dataset.pid === tm.captainId) t.draftTeams = t.draftTeams.filter(x => x.id !== tm.id);
+    else tm.members = tm.members.filter(id => id !== el.dataset.pid);
+    save(); render();
+  }
+  else if (a === 'draftremteam') {
+    if (!t || !isAdmin()) return;
+    t.draftTeams = (t.draftTeams || []).filter(x => x.id !== el.dataset.tid); save(); render();
+  }
+  else if (a === 'draftform') {
+    if (!t || !isAdmin()) return;
+    if (await uiConfirm('Собрать сетку из этих команд? Пул драфта закроется.', { title: 'Сформировать сетку?', ok: 'Собрать' })) draftForm(t);
+  }
+  else if (a === 'open') { view = { screen: 'tour', tid: el.dataset.tid }; render(); if (curT() && curT().phase === 'draft') regLoad(); }
   else if (a === 'del') {
     const tt = DB.tournaments.find(x => x.id === el.dataset.tid);
     if (tt && await uiConfirm(`Турнир «${tt.name}» удалится навсегда, вместе с результатами.`, { title: 'Удалить турнир?', ok: 'Удалить', danger: true })) {
@@ -3602,8 +3784,11 @@ document.addEventListener('click', async e => {
   else if (a === 'posfilter') { regPosFilter = el.dataset.val; render(); }
   else if (a === 'cmode') {
     createMode = el.dataset.mode;
-    document.getElementById('soloTools').classList.toggle('hidden', createMode === 'teams');
-    document.getElementById('teamTools').classList.toggle('hidden', createMode === 'solo');
+    const draft = createMode === 'draft';
+    document.getElementById('draftTools').classList.toggle('hidden', !draft);
+    document.getElementById('partBody').classList.toggle('hidden', draft);
+    document.getElementById('soloTools').classList.toggle('hidden', createMode !== 'solo');
+    document.getElementById('teamTools').classList.toggle('hidden', createMode !== 'teams');
     document.querySelectorAll('[data-action=cmode]').forEach(bt => {
       const on = bt.dataset.mode === createMode;
       bt.classList.toggle('primary', on); bt.classList.toggle('ghost', !on);
@@ -3973,15 +4158,7 @@ document.addEventListener('submit', async e => {
   e.preventDefault();
   const name = document.getElementById('cName').value.trim() || 'Турнир';
   const fmt = document.querySelector('input[name=fmt]:checked').value;
-  const names = document.getElementById('cPlayers').value.split('\n').map(s => s.trim()).filter(Boolean);
-  if (names.length < 2) { uiAlert('Нужно минимум два участника — впиши их в поле, по одному на строку.'); return; }
   const cap = parseInt((document.getElementById('cCap').value || '').trim(), 10) || 0;
-  if (cap > 0) {
-    const over = names.map(parseEntry).filter(en => en.members && en.members.length)
-      .map(en => ({ name: en.name, sum: en.members.reduce((a, m) => a + (regMmrOf(m) || 0), 0) }))
-      .filter(x => x.sum > cap);
-    if (over.length && !await uiConfirm(`Превышают лимит ${cap} MMR: ${over.map(x => `${x.name} (${x.sum})`).join(', ')}. Всё равно создать?`, { title: 'Лимит MMR', ok: 'Создать', danger: true })) return;
-  }
   const opts = {
     thirdPlace: document.getElementById('cThird').checked,
     groupCount: +document.getElementById('cGroups').value,
@@ -4000,6 +4177,15 @@ document.addEventListener('submit', async e => {
     },
     advance: 2
   };
+  if (createMode === 'draft') { createDraftTournament(name, fmt, opts); return; }
+  const names = document.getElementById('cPlayers').value.split('\n').map(s => s.trim()).filter(Boolean);
+  if (names.length < 2) { uiAlert('Нужно минимум два участника — впиши их в поле, по одному на строку.'); return; }
+  if (cap > 0) {
+    const over = names.map(parseEntry).filter(en => en.members && en.members.length)
+      .map(en => ({ name: en.name, sum: en.members.reduce((a, m) => a + (regMmrOf(m) || 0), 0) }))
+      .filter(x => x.sum > cap);
+    if (over.length && !await uiConfirm(`Превышают лимит ${cap} MMR: ${over.map(x => `${x.name} (${x.sum})`).join(', ')}. Всё равно создать?`, { title: 'Лимит MMR', ok: 'Создать', danger: true })) return;
+  }
   createTournament(name, fmt, names, opts);
 });
 
