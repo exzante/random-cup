@@ -164,6 +164,8 @@ textarea{resize:vertical;line-height:1.8}
 .homefoot a{color:var(--muted);text-decoration:none}
 .homefoot a:hover{color:var(--gold2)}
 .homefoot .dot{color:var(--line2)}
+.homefoot .foot-soc{color:var(--gold2);font-weight:600;border:1px solid var(--line2);padding:5px 13px;transition:all .15s}
+.homefoot .foot-soc:hover{border-color:var(--gold-deep);background:var(--gold-soft);color:var(--gold2)}
 .statrow{display:flex;justify-content:center;gap:14px;margin:8px 0 6px;flex-wrap:wrap}
 .stat{--c:10px;--bl:var(--line);display:flex;flex-direction:column;align-items:center;gap:1px;padding:12px 30px}
 .stat b{font-family:var(--disp);font-weight:600;font-size:22px;color:var(--gold2)}
@@ -2971,7 +2973,8 @@ function screenHome() {
     ${cards ? `<div class="tlist">${cards}</div>`
       : `<div class="empty"><span class="big">🏟️</span>Пока пусто. Жми <b>«+ Новый турнир»</b> сверху — займёт полминуты.</div>`}
     <div class="homefoot">
-      <a href="https://discord.gg/fUUsnvsp7" target="_blank" rel="noopener">Discord</a>
+      <a class="foot-soc" href="https://discord.gg/fUUsnvsp7" target="_blank" rel="noopener">💬 Discord</a>
+      <a class="foot-soc" href="https://chat.whatsapp.com/FUYeQo1iUJg52nzvm5fuFr" target="_blank" rel="noopener">🟢 WhatsApp</a>
       <span class="dot">·</span>
       <span>made by EXZANTE</span>
     </div>`;
