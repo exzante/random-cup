@@ -231,6 +231,7 @@ b.over-t{color:var(--red)}
 .chk{display:inline-flex;align-items:center;gap:9px;cursor:pointer;user-select:none;font-weight:500}
 .chk input[type=checkbox]{accent-color:var(--gold);width:17px;height:17px;cursor:pointer}
 .inline{display:flex;gap:20px;align-items:center;flex-wrap:wrap}
+.ptsbox{display:inline-flex;gap:12px;align-items:center;margin-left:6px}
 .modetog{display:inline-flex;gap:4px;margin-bottom:11px}
 .teamtools{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:9px}
 .inforow{display:flex;gap:10px;flex-wrap:wrap}
@@ -921,8 +922,9 @@ function loserOf(m) { return m.slots[0].pid === m.winner ? m.slots[1].pid : m.sl
 function matchDone(m) { return !!(m.winner || m.draw); }
 function ptsWin(t) { return t.opts.ptsWin == null ? 3 : t.opts.ptsWin; }
 function ptsDraw(t) { return t.opts.ptsDraw == null ? 1 : t.opts.ptsDraw; }
+function ptsLoss(t) { return t.opts.ptsLoss == null ? 0 : t.opts.ptsLoss; }
 function drawsOn(t) { return !!t.opts.draws; }
-function teamPts(t, s) { return s.w * ptsWin(t) + s.d * ptsDraw(t); }
+function teamPts(t, s) { return s.w * ptsWin(t) + s.d * ptsDraw(t) + s.l * ptsLoss(t); }
 // Ничью можно поставить только в одиночном матче группы (BO1), где оба места заняты
 function canDraw(t, m) {
   return drawsOn(t) && m.bracket && m.bracket.startsWith('g:') && stageBestOf(t, m) === 1
@@ -2669,10 +2671,15 @@ function playerEditModal(pid) {
     if (!name) { ov.querySelector('#peName').focus(); return; }
     if (!isAdmin()) { uiAlert('Добавлять и менять игроков может только администратор. Войди по паролю организатора (🔒 в шапке).'); return; }
     const mmrRaw = ov.querySelector('#peMmr').value.trim();
+    const nick = ov.querySelector('#peNick').value.trim();
+    if (nick) {
+      const clash = DB.players.find(x => x.id !== (existing ? existing.id : null) && (x.nick || '').toLowerCase() === nick.toLowerCase());
+      if (clash) { uiAlert(`Ник @${nick} уже занят игроком «${clash.name}». Ники должны быть уникальными.`); ov.querySelector('#peNick').focus(); return; }
+    }
     const p = {
       id: existing ? existing.id : uid(),
       name,
-      nick: ov.querySelector('#peNick').value.trim(),
+      nick,
       mmr: mmrRaw === '' ? null : parseInt(mmrRaw, 10),
       phone: ov.querySelector('#pePhone').value.trim(),
       pos: [...ov.querySelectorAll('.pePos:checked')].map(c => c.value).join(','),
@@ -3108,7 +3115,12 @@ function screenCreate() {
         </select></label>
       </div>
       <div class="frow inline hidden" id="optDraws">
-        <label class="chk" data-tip="Разрешить ничьи в матчах группы; таблица считается на очки (победа 3, ничья 1, поражение 0)"><input type="checkbox" id="cDraws"> Ничьи и очки <span class="note" style="margin-left:4px">(3 / 1 / 0)</span></label>
+        <label class="chk" data-tip="Разрешить ничьи в матчах группы; таблица считается на очки"><input type="checkbox" id="cDraws"> Ничьи и очки</label>
+        <span class="ptsbox hidden" id="ptsBox" data-tip="Очки за победу / ничью / поражение">
+          <label class="chk">П&nbsp;<input id="cPtsW" type="number" inputmode="numeric" value="3" style="width:52px"></label>
+          <label class="chk">Н&nbsp;<input id="cPtsD" type="number" inputmode="numeric" value="1" style="width:52px"></label>
+          <label class="chk">Пор&nbsp;<input id="cPtsL" type="number" inputmode="numeric" value="0" style="width:52px"></label>
+        </span>
       </div>
       <div class="frow">
         <label class="lbl">Инфо для участников <span class="note">(покажется в турнире и по ссылке)</span></label>
@@ -3748,6 +3760,7 @@ document.addEventListener('contextmenu', e => {
 
 document.addEventListener('change', e => {
   if (e.target.id === 'regMmr') { regMmrMin = +e.target.value; render(); return; }
+  if (e.target.id === 'cDraws') { const pb = document.getElementById('ptsBox'); if (pb) pb.classList.toggle('hidden', !e.target.checked); return; }
   if (e.target.id === 'poAdv') {
     const t = curT();
     if (t) { t.opts.advance = +e.target.value; save(); render(); }
@@ -3940,7 +3953,9 @@ document.addEventListener('submit', async e => {
     boPlayoff: +document.getElementById('cBoPo').value,
     boFinal: +document.getElementById('cBoFinal').value,
     draws: document.getElementById('cDraws').checked,
-    ptsWin: 3, ptsDraw: 1, ptsLoss: 0,
+    ptsWin: parseInt(document.getElementById('cPtsW').value, 10) || 0,
+    ptsDraw: parseInt(document.getElementById('cPtsD').value, 10) || 0,
+    ptsLoss: parseInt(document.getElementById('cPtsL').value, 10) || 0,
     mmrCap: cap,
     info: {
       when: document.getElementById('cWhen').value.trim(),
