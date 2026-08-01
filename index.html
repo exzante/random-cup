@@ -569,6 +569,9 @@ canvas.confetti{position:fixed;inset:0;z-index:100;pointer-events:none}
 .dteam.over{--bl:rgba(255,92,92,.5)}
 .dteam-h{display:flex;align-items:center;gap:8px;margin-bottom:9px}
 .dteam-h b{font-family:var(--disp);font-size:14px;letter-spacing:.04em;color:var(--gold2)}
+.dteam-h .dmove{display:inline-flex;gap:1px}
+.dteam-h .dmove .mini{padding:2px 5px;font-size:11px;line-height:1}
+.dteam-h .dmove .mini:disabled{opacity:.28;cursor:default}
 .dteam-mmr{font-family:var(--disp);font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums;margin-left:auto}
 .dteam-mmr .crem{color:var(--green)}
 .dteam-mmr .cbad{color:var(--red);font-weight:800}
@@ -3424,7 +3427,7 @@ function draftPoolItem(p, admin) {
     ${admin ? `<button class="mini dcap" data-action="draftcap" data-pid="${p.id}" data-tip="Сделать капитаном (создать команду)">★ Кэп</button>` : ''}
   </div>`;
 }
-function draftTeamCard(t, tm, cap, admin) {
+function draftTeamCard(t, tm, cap, admin, idx = 0, n = 1) {
   const sum = tm.members.reduce((a, id) => { const p = regById(id); return a + ((p && p.mmr) || 0); }, 0);
   const rem = cap - sum, over = cap > 0 && sum > cap;
   const members = tm.members.map(id => {
@@ -3433,7 +3436,7 @@ function draftTeamCard(t, tm, cap, admin) {
     return `<span class="dmem ${isCap ? 'cap' : ''}">${isCap ? '★' : ''}${avatarByName(nm)}<span class="dmn">${esc(nm)}</span><small>${p && p.mmr != null ? p.mmr : ''}</small>${admin ? `<button class="mini del" data-action="draftremmem" data-tid="${tm.id}" data-pid="${id}" data-tip="${isCap ? 'Убрать всю команду' : 'Вернуть в пул'}">✕</button>` : ''}</span>`;
   }).join('');
   return `<div class="dteam cut ${over ? 'over' : ''}">
-    <div class="dteam-h"><b>${esc(tm.name)}</b><span class="dteam-mmr">${sum}${cap > 0 ? ` / ${cap}` : ''}${cap > 0 ? (over ? ` <span class="cbad">−${sum - cap}</span>` : ` <span class="crem">+${rem}</span>`) : ''}</span>${admin ? `<button class="mini del" data-action="draftremteam" data-tid="${tm.id}" data-tip="Удалить команду">✕</button>` : ''}</div>
+    <div class="dteam-h"><b>${esc(tm.name)}</b><span class="dteam-mmr">${sum}${cap > 0 ? ` / ${cap}` : ''}${cap > 0 ? (over ? ` <span class="cbad">−${sum - cap}</span>` : ` <span class="crem">+${rem}</span>`) : ''}</span>${admin ? `<span class="dmove"><button class="mini" data-action="draftmove" data-tid="${tm.id}" data-dir="-1" ${idx === 0 ? 'disabled' : ''} data-tip="Сдвинуть влево">◀</button><button class="mini" data-action="draftmove" data-tid="${tm.id}" data-dir="1" ${idx >= n - 1 ? 'disabled' : ''} data-tip="Сдвинуть вправо">▶</button></span><button class="mini del" data-action="draftremteam" data-tid="${tm.id}" data-tip="Удалить команду">✕</button>` : ''}</div>
     <div class="dteam-list">${members || '<span class="note">пусто</span>'}</div>
     ${admin ? `<button class="mini dadd" data-action="draftadd" data-tid="${tm.id}" data-tip="Добавить игрока из пула">＋ игрок</button>` : ''}
   </div>`;
@@ -3477,7 +3480,7 @@ function draftHtml(t) {
       </div>
       <div class="draftteamswrap">
         <div class="draftcol-h">Команды <span>${t.draftTeams.length}</span></div>
-        <div class="draftteams">${t.draftTeams.length ? t.draftTeams.map(tm => draftTeamCard(t, tm, cap, admin)).join('') : `<div class="note" style="padding:12px">Команд нет. Нажми <b>«★ Кэп»</b> у игрока в пуле, чтобы сделать его капитаном.</div>`}</div>
+        <div class="draftteams">${t.draftTeams.length ? t.draftTeams.map((tm, i) => draftTeamCard(t, tm, cap, admin, i, t.draftTeams.length)).join('') : `<div class="note" style="padding:12px">Команд нет. Нажми <b>«★ Кэп»</b> у игрока в пуле, чтобы сделать его капитаном.</div>`}</div>
       </div>
     </div>
   </div>`;
@@ -3758,7 +3761,7 @@ function drawEdges() {
 window.addEventListener('resize', () => requestAnimationFrame(drawEdges));
 
 /* ================= events ================= */
-const MUT_ACTIONS = new Set(['win', 'score', 'draw', 'undo', 'rename', 'pdel', 'fill', 'gadd', 'gdel', 'makepo', 'resetpo', 'reseed', 'addp', 'trename', 'raddgo', 'rdel', 'editinfo', 'draftcap', 'draftadd', 'draftremmem', 'draftremteam', 'draftform']);
+const MUT_ACTIONS = new Set(['win', 'score', 'draw', 'undo', 'rename', 'pdel', 'fill', 'gadd', 'gdel', 'makepo', 'resetpo', 'reseed', 'addp', 'trename', 'raddgo', 'rdel', 'editinfo', 'draftcap', 'draftadd', 'draftremmem', 'draftremteam', 'draftmove', 'draftform']);
 document.addEventListener('click', async e => {
   const el = e.target.closest('[data-action]');
   if (!el || el.disabled) return;
@@ -3791,6 +3794,14 @@ document.addEventListener('click', async e => {
   else if (a === 'draftremteam') {
     if (!t || !isAdmin()) return;
     t.draftTeams = (t.draftTeams || []).filter(x => x.id !== el.dataset.tid); save(); render();
+  }
+  else if (a === 'draftmove') {
+    if (!t || !isAdmin()) return;
+    const arr = t.draftTeams || [];
+    const idx = arr.findIndex(x => x.id === el.dataset.tid), j = idx + (+el.dataset.dir);
+    if (idx < 0 || j < 0 || j >= arr.length) return;
+    [arr[idx], arr[j]] = [arr[j], arr[idx]];
+    save(); render();
   }
   else if (a === 'draftform') {
     if (!t || !isAdmin()) return;
