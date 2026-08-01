@@ -1064,6 +1064,15 @@ function stageBestOf(t, m) {
   return o.boPlayoff || b;
 }
 function winsNeededM(t, m) { return Math.ceil(stageBestOf(t, m) / 2); }
+// Победитель из счёта: BO1 — у кого больше; BO3+ — кто первым набрал need. Ничья счёта → null.
+function winnerFromScore(t, m) {
+  if (!isReady(m)) return null;
+  const need = winsNeededM(t, m);
+  const s0 = m.slots[0].score || 0, s1 = m.slots[1].score || 0;
+  if (s0 === s1) return null;
+  if (need > 1 && Math.max(s0, s1) < need) return null;
+  return m.slots[s0 > s1 ? 0 : 1].pid;
+}
 function setWinner(t, m, si) {
   if (m.winner || !isReady(m)) return;
   const need = winsNeededM(t, m);
@@ -4088,11 +4097,22 @@ document.addEventListener('click', async e => {
   else if (a === 'score') {
     if (!t) return;
     const m = t.matches[el.dataset.mid], si = +el.dataset.si;
-    if (!m.slots[si].pid || m.slots[si].pid === 'BYE' || m.auto || matchDone(m)) return;
+    if (!m.slots[si].pid || m.slots[si].pid === 'BYE' || m.auto) return;
+    // Группа: счёт всегда редактируем, победитель пересчитывается по счёту (в т.ч. снимается)
+    if (m.bracket && m.bracket.startsWith('g:')) {
+      if (t.phase === 'po') return;                        // группы закрыты после плей-офф
+      m.slots[si].score = (m.slots[si].score || 0) + 1;
+      const w = winnerFromScore(t, m);
+      if (w && !m.winner) sndWin();
+      m.winner = w; if (w) m.draw = false;
+      save(); render();
+      return;
+    }
+    // Сетка: готовый матч не трогаем (сначала «↺ Отменить»)
+    if (matchDone(m)) return;
     m.slots[si].score = (m.slots[si].score || 0) + 1;
     const need = winsNeededM(t, m);
     const s0 = m.slots[0].score || 0, s1 = m.slots[1].score || 0;
-    // BO1 — победитель по счёту (у кого больше), как только разошёлся; BO3+ — кто первым набрал need
     const decided = need > 1 ? Math.max(s0, s1) >= need : s0 !== s1;
     if (isReady(m) && decided && s0 !== s1) {
       m.winner = m.slots[s0 > s1 ? 0 : 1].pid;
@@ -4187,7 +4207,16 @@ document.addEventListener('contextmenu', e => {
     const t = curT();
     if (!t || !canEdit(t)) return;
     const m = t.matches[sc.dataset.mid], si = +sc.dataset.si;
-    if (!m.slots[si].pid || m.slots[si].pid === 'BYE' || m.auto || m.winner) return;
+    if (!m.slots[si].pid || m.slots[si].pid === 'BYE' || m.auto) return;
+    // Группа: минус работает всегда, победитель пересчитывается (может сняться при равенстве)
+    if (m.bracket && m.bracket.startsWith('g:')) {
+      if (t.phase === 'po') return;
+      m.slots[si].score = Math.max(0, (m.slots[si].score || 0) - 1);
+      m.winner = winnerFromScore(t, m);
+      save(); render();
+      return;
+    }
+    if (m.winner) return;                                   // сетка: сначала «↺ Отменить»
     m.slots[si].score = Math.max(0, (m.slots[si].score || 0) - 1);
     save(); render();
     return;
