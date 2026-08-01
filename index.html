@@ -548,22 +548,22 @@ canvas.confetti{position:fixed;inset:0;z-index:100;pointer-events:none}
 /* капитанский драфт */
 .drafttools{font-size:12.5px;color:var(--muted);background:var(--panel2);border:1px solid var(--line);padding:9px 13px;margin-bottom:8px;line-height:1.55}
 .drafttools b{color:var(--gold2)}
-.draftgrid{display:grid;grid-template-columns:320px 1fr;gap:16px;align-items:start;margin-top:14px}
+.draftgrid{display:grid;grid-template-columns:minmax(300px,42%) 1fr;gap:16px;align-items:start;margin-top:14px}
 .draftcol-h{font-family:var(--disp);font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:var(--gold2);margin-bottom:10px;display:flex;gap:8px}
 .draftcol-h span{color:var(--dim)}
 .draftpool{--c:12px;--bl:var(--line);padding:14px 15px}
-.draftpool-list{display:flex;flex-direction:column;gap:6px;max-height:72vh;overflow:auto}
-.pooltier{display:flex;flex-direction:column;gap:6px}
-.pooltier + .pooltier{margin-top:10px}
-.pooltier-h{display:flex;align-items:center;gap:7px;padding:2px 2px 5px;border-bottom:1px solid var(--line)}
+.draftpool-list{display:flex;flex-direction:column;gap:14px}
+.pooltier{display:grid;grid-template-columns:repeat(auto-fill,minmax(158px,1fr));gap:6px;align-content:start}
+.pooltier-h{grid-column:1/-1;display:flex;align-items:center;gap:7px;padding:2px 2px 5px;border-bottom:1px solid var(--line)}
 .pooltier-h span{font-family:var(--disp);font-size:10.5px;font-weight:700;letter-spacing:.18em;text-transform:uppercase;color:var(--gold2)}
 .pooltier-h i{font-style:normal;font-size:10px;color:var(--dim);font-variant-numeric:tabular-nums}
 .pooltier-h b{margin-left:auto;font-family:var(--disp);font-size:11px;color:var(--muted);font-variant-numeric:tabular-nums}
-.dpi{display:flex;align-items:center;gap:8px;background:var(--panel2);border:1px solid var(--line);padding:5px 8px}
-.dpi .dpn{flex:1;min-width:0;font-weight:600;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.dpi .dpp{font-size:10px;color:var(--gold2);background:var(--gold-soft);border:1px solid var(--gold-deep);padding:1px 5px;flex-shrink:0}
-.dpi .dpm{font-family:var(--disp);font-weight:700;font-size:12px;color:var(--gold2);flex-shrink:0}
-.dpi .dcap{color:var(--gold2);white-space:nowrap;font-size:11px;flex-shrink:0}
+.dpi{display:flex;align-items:center;gap:6px;background:var(--panel2);border:1px solid var(--line);padding:4px 6px;min-width:0}
+.dpi .av{width:20px;height:20px;font-size:9px;flex-shrink:0}
+.dpi .dpn{flex:1;min-width:0;font-weight:600;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dpi .dpp{display:none}
+.dpi .dpm{font-family:var(--disp);font-weight:700;font-size:11px;color:var(--gold2);flex-shrink:0}
+.dpi .dcap{color:var(--gold2);white-space:nowrap;font-size:12px;flex-shrink:0;padding:2px 5px}
 .draftteams{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,240px),1fr));gap:12px}
 .dteam{--c:12px;--bl:var(--line);padding:12px 13px;display:flex;flex-direction:column}
 .dteam.over{--bl:rgba(255,92,92,.5)}
@@ -3424,7 +3424,7 @@ function infoEditModal() {
 function draftPoolItem(p, admin) {
   return `<div class="dpi">
     ${avatarByName(p.nick || p.name)}<span class="dpn">${esc(p.nick || p.name)}</span>${posArr(p).length ? `<span class="dpp">${posArr(p).join('/')}</span>` : ''}<span class="dpm">${p.mmr != null ? p.mmr : '—'}</span>
-    ${admin ? `<button class="mini dcap" data-action="draftcap" data-pid="${p.id}" data-tip="Сделать капитаном (создать команду)">★ Кэп</button>` : ''}
+    ${admin ? `<button class="mini dcap" data-action="draftcap" data-pid="${p.id}" data-tip="Сделать капитаном (создать команду)">★</button>` : ''}
   </div>`;
 }
 function draftTeamCard(t, tm, cap, admin, idx = 0, n = 1) {
