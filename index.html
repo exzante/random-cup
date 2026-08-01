@@ -2675,10 +2675,11 @@ function renderHints() {
   el.classList.remove('hidden');
   const t = curT();
   if (t && !canEdit(t)) {
+    const touch = matchMedia('(hover:none)').matches;
     el.innerHTML = `
       <span class="hchip"><span class="ic">👁</span><b>режим зрителя</b>&nbsp;— сетка обновляется сама</span>
-      <span class="hchip"><span class="ic">🗺</span><b>зажми и тяни</b>&nbsp;— перемещение по сетке</span>
-      <span class="hchip"><span class="ic">🔍</span>Ctrl+колесо — зум</span>`;
+      <span class="hchip"><span class="ic">🗺</span>${touch ? 'листай сетку пальцем' : '<b>зажми и тяни</b>&nbsp;— перемещение по сетке'}</span>
+      ${touch ? '' : `<span class="hchip"><span class="ic">🔍</span>Ctrl+колесо — зум</span>`}`;
     return;
   }
   el.innerHTML = `
@@ -3337,6 +3338,8 @@ function screenCreate() {
 }
 
 function coachHtml() {
+  const ct = curT();
+  if (ct && !canEdit(ct)) return '';   // зрителю судейская памятка ни к чему
   if (localStorage.getItem('turnir_coach2')) return '';
   return `<div class="coach cut">
     <span class="ic">💡</span>
