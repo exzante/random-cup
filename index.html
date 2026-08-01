@@ -362,16 +362,17 @@ table.stand td.num,table.stand th.num{text-align:center;width:34px}
 .grow-tools{display:inline-flex;gap:1px;opacity:0;transition:opacity .12s;margin-left:auto}
 table.stand tr:hover .grow-tools{opacity:1}
 .gmatches{display:flex;flex-direction:column;gap:8px}
-/* туры раскладываем плиткой, а не одним длинным столбцом */
-.grounds{display:grid;grid-template-columns:repeat(auto-fill,minmax(232px,1fr));gap:14px 18px;align-content:start}
-.ground-block{display:flex;flex-direction:column;gap:6px;min-width:0}
-.gm-list{display:flex;flex-direction:column;gap:6px}
-.ground{display:flex;align-items:center;gap:9px;margin:0 0 2px;font-family:var(--disp);font-size:9.5px;font-weight:600;letter-spacing:.24em;text-transform:uppercase;color:var(--dim)}
-.ground::after{content:'';flex:1;height:1px;background:var(--line);order:2}
-.ground.cur{color:var(--gold2)}
-.ground.cur::after{background:linear-gradient(90deg,var(--gold-deep),transparent)}
-.ground .grcount{order:1;flex:none;font-size:9px;color:var(--muted);letter-spacing:.05em}
-.ground .gbye{flex:none;order:3;font-family:var(--body);font-size:11px;font-weight:600;letter-spacing:.01em;text-transform:none;color:var(--gold2)}
+/* каждый тур — отдельная карточка, чтобы глаз цеплялся за границы */
+.grounds{display:grid;grid-template-columns:repeat(auto-fill,minmax(288px,1fr));gap:12px;align-content:start}
+.ground-block{background:var(--panel2);border:1px solid var(--line);padding:9px 10px 10px;display:flex;flex-direction:column;gap:7px;min-width:0}
+.ground-block.cur{border-color:var(--gold-deep);background:linear-gradient(180deg,var(--gold-soft),var(--panel2) 55%)}
+.gm-list{display:flex;flex-direction:column;gap:5px}
+.ground{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:0}
+.ground .grn{font-family:var(--disp);font-size:11px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;color:var(--gold2)}
+.ground .grcount{font-size:9px;color:var(--muted);letter-spacing:.05em;font-weight:600;font-variant-numeric:tabular-nums}
+.ground .grest{margin-left:auto;display:inline-flex;align-items:center;gap:3px;font-size:10px;font-weight:600;color:var(--muted);background:var(--panel3);border:1px solid var(--line);padding:1px 7px;white-space:nowrap;max-width:100%;overflow:hidden}
+.ground .grest b{color:var(--gold2);font-weight:700;overflow:hidden;text-overflow:ellipsis;max-width:110px}
+.ground-block.cur .grest{border-color:var(--gold-deep)}
 /* одна группа: таблица слева, матчи справа — всё видно сразу */
 .gwrap.solo{grid-template-columns:1fr}
 .gcard.solo{display:grid;grid-template-columns:minmax(270px,320px) 1fr;grid-template-areas:'head head' 'table matches';gap:14px 24px;align-items:start}
@@ -1190,10 +1191,11 @@ function groupMatchesHtml(t, g, locked) {
     const resting = g.pids.filter(p => !playing.has(p));
     const restName = resting.length === 1 ? pname(t, resting[0]) : '';
     const done = ms.filter(matchDone).length;
-    const head = multi ? `<div class="ground ${r === curRound ? 'cur' : ''}">
-        <span>Тур ${r}</span><span class="grcount">${done}/${ms.length}</span>${restName ? `<span class="gbye" data-tip="В этом туре отдыхает — без игры">💤 ${esc(restName)}</span>` : ''}
-      </div>` : '';
-    return `<div class="ground-block">${head}<div class="gm-list">${ms.map(m => gmHtml(t, m, locked)).join('')}</div></div>`;
+    const cur = r === curRound;
+    const head = `<div class="ground">
+        <span class="grn">Тур ${r}</span><span class="grcount">${done}/${ms.length}</span>${restName ? `<span class="grest" data-tip="В этом туре отдыхает — без игры">💤 отдыхает: <b>${esc(restName)}</b></span>` : ''}
+      </div>`;
+    return `<div class="ground-block ${cur ? 'cur' : ''}">${multi ? head : ''}<div class="gm-list">${ms.map(m => gmHtml(t, m, locked)).join('')}</div></div>`;
   }).join('');
   return `<div class="grounds">${blocks}</div>`;
 }
