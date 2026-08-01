@@ -553,6 +553,12 @@ canvas.confetti{position:fixed;inset:0;z-index:100;pointer-events:none}
 .draftcol-h span{color:var(--dim)}
 .draftpool{--c:12px;--bl:var(--line);padding:14px 15px}
 .draftpool-list{display:flex;flex-direction:column;gap:6px;max-height:72vh;overflow:auto}
+.pooltier{display:flex;flex-direction:column;gap:6px}
+.pooltier + .pooltier{margin-top:10px}
+.pooltier-h{display:flex;align-items:center;gap:7px;padding:2px 2px 5px;border-bottom:1px solid var(--line)}
+.pooltier-h span{font-family:var(--disp);font-size:10.5px;font-weight:700;letter-spacing:.18em;text-transform:uppercase;color:var(--gold2)}
+.pooltier-h i{font-style:normal;font-size:10px;color:var(--dim);font-variant-numeric:tabular-nums}
+.pooltier-h b{margin-left:auto;font-family:var(--disp);font-size:11px;color:var(--muted);font-variant-numeric:tabular-nums}
 .dpi{display:flex;align-items:center;gap:8px;background:var(--panel2);border:1px solid var(--line);padding:5px 8px}
 .dpi .dpn{flex:1;min-width:0;font-weight:600;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .dpi .dpp{font-size:10px;color:var(--gold2);background:var(--gold-soft);border:1px solid var(--gold-deep);padding:1px 5px;flex-shrink:0}
@@ -3432,6 +3438,23 @@ function draftTeamCard(t, tm, cap, admin) {
     ${admin ? `<button class="mini dadd" data-action="draftadd" data-tid="${tm.id}" data-tip="Добавить игрока из пула">＋ игрок</button>` : ''}
   </div>`;
 }
+// Тир игрока по MMR: 2 тир 6500+, 3 тир 5000–6500, 4 тир ниже. (1 тир — капитаны, они уже вне пула.)
+const POOL_TIERS = [
+  { key: 2, name: '2 тир', sub: '6500+', min: 6500 },
+  { key: 3, name: '3 тир', sub: '5000–6500', min: 5000 },
+  { key: 4, name: '4 тир', sub: '< 5000', min: 0 },
+];
+function poolTierKey(mmr) { const m = mmr || 0; return (POOL_TIERS.find(b => m >= b.min) || POOL_TIERS[POOL_TIERS.length - 1]).key; }
+function poolTierSections(pool, admin) {
+  return POOL_TIERS.map(b => {
+    const list = pool.filter(p => poolTierKey(p.mmr) === b.key);
+    if (!list.length) return '';
+    return `<div class="pooltier">
+      <div class="pooltier-h"><span>${b.name}</span><i>${b.sub}</i><b>${list.length}</b></div>
+      ${list.map(p => draftPoolItem(p, admin)).join('')}
+    </div>`;
+  }).join('');
+}
 function draftHtml(t) {
   const admin = isAdmin();
   t.draftTeams = t.draftTeams || [];
@@ -3450,7 +3473,7 @@ function draftHtml(t) {
     <div class="draftgrid">
       <div class="draftpool cut">
         <div class="draftcol-h">Пул <span>${pool.length}</span></div>
-        <div class="draftpool-list">${pool.length ? pool.map(p => draftPoolItem(p, admin)).join('') : `<div class="note" style="padding:12px">Пул пуст. Отметь игроков <b>«✅ идёт»</b> на странице «Игроки».</div>`}</div>
+        <div class="draftpool-list">${pool.length ? poolTierSections(pool, admin) : `<div class="note" style="padding:12px">Пул пуст. Отметь игроков <b>«✅ идёт»</b> на странице «Игроки».</div>`}</div>
       </div>
       <div class="draftteamswrap">
         <div class="draftcol-h">Команды <span>${t.draftTeams.length}</span></div>
