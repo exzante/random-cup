@@ -1958,9 +1958,11 @@ async function initLiveFromURL() {
     const body = JSON.stringify(data.data);
     lastSent[code] = body;
     let t = DB.tournaments.find(x => x.share && x.share.id === code);
-    const myKey = key || (t && t.share && t.share.key) || null;
+    // Роль определяет ТОЛЬКО ключ из ссылки: есть k → судья, нет k → зритель.
+    // Сохранённый ключ бережём в данных (чтобы не потерять доступ), но на роль он не влияет.
+    const storedKey = (t && t.share && t.share.key) || null;
     const fresh = JSON.parse(body);
-    fresh.share = { id: code, key: myKey, viewer: !myKey };
+    fresh.share = { id: code, key: key || storedKey, viewer: !key };
     if (t) DB.tournaments[DB.tournaments.indexOf(t)] = fresh;
     else DB.tournaments.unshift(fresh);
     applyingRemote = true; save(); applyingRemote = false;
