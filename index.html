@@ -362,12 +362,23 @@ table.stand td.num,table.stand th.num{text-align:center;width:34px}
 .grow-tools{display:inline-flex;gap:1px;opacity:0;transition:opacity .12s;margin-left:auto}
 table.stand tr:hover .grow-tools{opacity:1}
 .gmatches{display:flex;flex-direction:column;gap:8px}
-.ground{display:flex;align-items:center;gap:9px;margin:12px 0 3px;font-family:var(--disp);font-size:9.5px;font-weight:600;letter-spacing:.24em;text-transform:uppercase;color:var(--dim)}
-.ground:first-child{margin-top:0}
-.ground::after{content:'';flex:1;height:1px;background:var(--line)}
+/* туры раскладываем плиткой, а не одним длинным столбцом */
+.grounds{display:grid;grid-template-columns:repeat(auto-fill,minmax(232px,1fr));gap:14px 18px;align-content:start}
+.ground-block{display:flex;flex-direction:column;gap:6px;min-width:0}
+.gm-list{display:flex;flex-direction:column;gap:6px}
+.ground{display:flex;align-items:center;gap:9px;margin:0 0 2px;font-family:var(--disp);font-size:9.5px;font-weight:600;letter-spacing:.24em;text-transform:uppercase;color:var(--dim)}
+.ground::after{content:'';flex:1;height:1px;background:var(--line);order:2}
 .ground.cur{color:var(--gold2)}
 .ground.cur::after{background:linear-gradient(90deg,var(--gold-deep),transparent)}
-.ground .gbye{flex:none;order:3;font-family:var(--body);font-size:10.5px;font-weight:600;letter-spacing:.02em;text-transform:none;color:var(--muted)}
+.ground .grcount{order:1;flex:none;font-size:9px;color:var(--muted);letter-spacing:.05em}
+.ground .gbye{flex:none;order:3;font-family:var(--body);font-size:11px;font-weight:600;letter-spacing:.01em;text-transform:none;color:var(--gold2)}
+/* одна группа: таблица слева, матчи справа — всё видно сразу */
+.gwrap.solo{grid-template-columns:1fr}
+.gcard.solo{display:grid;grid-template-columns:minmax(270px,320px) 1fr;grid-template-areas:'head head' 'table matches';gap:14px 24px;align-items:start}
+.gcard.solo .ghead{grid-area:head;margin-bottom:0}
+.gcard.solo .stand{grid-area:table}
+.gcard.solo .gmatches{grid-area:matches}
+@media (max-width:760px){.gcard.solo{grid-template-columns:1fr;grid-template-areas:'head' 'table' 'matches'}}
 .gm{--c:8px;--bl:var(--line);--bg2:var(--panel2);display:grid;grid-template-columns:1fr auto auto auto 1fr auto;align-items:center;gap:8px;user-select:none;
   padding:7px 11px;transition:opacity .15s}
 .gm.ready{--bl:linear-gradient(90deg,rgba(61,220,151,.6),var(--line) 70%)}
@@ -1172,17 +1183,19 @@ function groupMatchesHtml(t, g, locked) {
   gms.forEach(m => { (byRound[m.round] = byRound[m.round] || []).push(m); });
   const rounds = Object.keys(byRound).map(Number).sort((a, b) => a - b);
   const multi = rounds.length > 1;
-  return rounds.map(r => {
+  const blocks = rounds.map(r => {
     const ms = byRound[r];
     const playing = new Set();
     ms.forEach(m => { playing.add(m.slots[0].pid); playing.add(m.slots[1].pid); });
     const resting = g.pids.filter(p => !playing.has(p));
     const restName = resting.length === 1 ? pname(t, resting[0]) : '';
+    const done = ms.filter(matchDone).length;
     const head = multi ? `<div class="ground ${r === curRound ? 'cur' : ''}">
-        <span>Тур ${r}</span>${restName ? `<span class="gbye" data-tip="Отдыхает в этом туре">💤 ${esc(restName)}</span>` : ''}
+        <span>Тур ${r}</span><span class="grcount">${done}/${ms.length}</span>${restName ? `<span class="gbye" data-tip="В этом туре отдыхает — без игры">💤 ${esc(restName)}</span>` : ''}
       </div>` : '';
-    return head + ms.map(m => gmHtml(t, m, locked)).join('');
+    return `<div class="ground-block">${head}<div class="gm-list">${ms.map(m => gmHtml(t, m, locked)).join('')}</div></div>`;
   }).join('');
+  return `<div class="grounds">${blocks}</div>`;
 }
 function standings(t, g) {
   const st = {};
@@ -3687,7 +3700,8 @@ function groupsHtml(t, champ) {
       <span class="spacer" style="flex:1"></span>
       <button class="btn sm danger" data-action="resetpo" data-tip="Удалить сетку плей-офф и снова открыть группы">↺ Сбросить плей-офф</button>`;
   }
-  html += `</div><div class="gwrap">`;
+  const solo = t.groups.length === 1;
+  html += `</div><div class="gwrap ${solo ? 'solo' : ''}">`;
 
   for (const g of t.groups) {
     const st = standings(t, g);
@@ -3709,7 +3723,7 @@ function groupsHtml(t, champ) {
       </tr>`;
     }).join('');
     const matches = groupMatchesHtml(t, g, locked);
-    html += `<div class="gcard cut" data-gid="${g.id}">
+    html += `<div class="gcard cut ${solo ? 'solo' : ''}" data-gid="${g.id}">
       <div class="ghead"><h3>Группа ${esc(g.name)}</h3><span class="gprog">${gp}/${gms.length} сыграно</span><span class="sp"></span>
         ${!locked ? `<button class="mini" data-tip="Добавить игрока в группу ${esc(g.name)}" data-action="gadd" data-gid="${g.id}" style="font-size:15px">＋</button>` : ''}
       </div>
@@ -4075,8 +4089,11 @@ document.addEventListener('click', async e => {
     if (!m.slots[si].pid || m.slots[si].pid === 'BYE' || m.auto || matchDone(m)) return;
     m.slots[si].score = (m.slots[si].score || 0) + 1;
     const need = winsNeededM(t, m);
-    if (need > 1 && isReady(m) && m.slots[si].score >= need) {
-      m.winner = m.slots[si].pid;
+    const s0 = m.slots[0].score || 0, s1 = m.slots[1].score || 0;
+    // BO1 — победитель по счёту (у кого больше), как только разошёлся; BO3+ — кто первым набрал need
+    const decided = need > 1 ? Math.max(s0, s1) >= need : s0 !== s1;
+    if (isReady(m) && decided && s0 !== s1) {
+      m.winner = m.slots[s0 > s1 ? 0 : 1].pid;
       propagate(t, m);
       resolveByes(t);
       sndWin();
