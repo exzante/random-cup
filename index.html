@@ -2091,6 +2091,30 @@ function chamf(ctx, x, y, w, h, c) {
   ctx.lineTo(x + w, y + h); ctx.lineTo(x + c, y + h); ctx.lineTo(x, y + h - c);
   ctx.closePath();
 }
+// Общая шапка экспорта (логотип, название, формат, чемпион). Возвращает pid чемпиона.
+function drawExportHeader(ctx, t, W, pad) {
+  const grad = ctx.createRadialGradient(W / 2, -150, 50, W / 2, -150, 600);
+  grad.addColorStop(0, 'rgba(212,175,55,.10)'); grad.addColorStop(1, 'rgba(212,175,55,0)');
+  ctx.fillStyle = grad; ctx.fillRect(0, 0, W, 450);
+  ctx.fillStyle = '#D4AF37'; chamf(ctx, pad, 26, 34, 32, 8); ctx.fill();
+  ctx.fillStyle = '#161204'; ctx.font = '700 13px Oswald, Arial'; ctx.textBaseline = 'middle'; ctx.textAlign = 'center';
+  ctx.fillText('RC', pad + 17, 44);
+  ctx.textAlign = 'left';
+  ctx.fillStyle = '#F2DA8C'; ctx.font = '700 24px Oswald, Arial';
+  ctx.fillText(t.name.toUpperCase(), pad + 48, 38);
+  ctx.fillStyle = '#9C957F'; ctx.font = '600 11px Inter, Arial';
+  ctx.fillText(`RANDOM CUP · ${FMT_LABEL[t.format]} · ${Object.keys(t.players).length} уч. · ${new Date().toLocaleDateString('ru-RU')}`, pad + 48, 60);
+  const champ = podium(t).first;
+  ctx.textAlign = 'right';
+  if (champ) {
+    ctx.fillStyle = '#F2DA8C'; ctx.font = '700 16px Oswald, Arial';
+    ctx.fillText(`🏆 ${pname(t, champ).toUpperCase()}`, W - pad, 40);
+  }
+  ctx.fillStyle = '#6E6450'; ctx.font = '600 11px Oswald, Arial';
+  ctx.fillText('BY EXZANTE', W - pad, champ ? 62 : 44);
+  ctx.textAlign = 'left';
+  return champ;
+}
 function exportImage(t) {
   const secs = [...document.querySelectorAll('.bsec')];
   if (!secs.length) { uiAlert('Сетки на экране нет — нечего экспортировать.'); return; }
@@ -2124,27 +2148,7 @@ function exportImage(t) {
   const ctx = cv.getContext('2d');
   ctx.scale(SC, SC);
   ctx.fillStyle = '#080706'; ctx.fillRect(0, 0, W, H);
-  const grad = ctx.createRadialGradient(W / 2, -150, 50, W / 2, -150, 600);
-  grad.addColorStop(0, 'rgba(212,175,55,.10)'); grad.addColorStop(1, 'rgba(212,175,55,0)');
-  ctx.fillStyle = grad; ctx.fillRect(0, 0, W, 450);
-  /* шапка */
-  ctx.fillStyle = '#D4AF37'; chamf(ctx, pad, 26, 34, 32, 8); ctx.fill();
-  ctx.fillStyle = '#161204'; ctx.font = '700 14px Oswald, Arial'; ctx.textBaseline = 'middle'; ctx.textAlign = 'center';
-  ctx.fillText('DP', pad + 17, 44);
-  ctx.textAlign = 'left';
-  ctx.fillStyle = '#F2DA8C'; ctx.font = '700 24px Oswald, Arial';
-  ctx.fillText(t.name.toUpperCase(), pad + 48, 38);
-  ctx.fillStyle = '#9C957F'; ctx.font = '600 11px Inter, Arial';
-  ctx.fillText(`DUBAI PROJECT · ${FMT_LABEL[t.format]} · ${Object.keys(t.players).length} уч. · ${new Date().toLocaleDateString('ru-RU')}`, pad + 48, 60);
-  const champ = podium(t).first;
-  ctx.textAlign = 'right';
-  if (champ) {
-    ctx.fillStyle = '#F2DA8C'; ctx.font = '700 16px Oswald, Arial';
-    ctx.fillText(`🏆 ${pname(t, champ).toUpperCase()}`, W - pad, 40);
-  }
-  ctx.fillStyle = '#6E6450'; ctx.font = '600 11px Oswald, Arial';
-  ctx.fillText('BY EXZANTE', W - pad, champ ? 62 : 44);
-  ctx.textAlign = 'left';
+  const champ = drawExportHeader(ctx, t, W, pad);
   /* секции */
   let oy = headH;
   for (const d of data) {
@@ -2246,6 +2250,123 @@ function drawSectionPNG(ctx, t, d, ox, oy, champ) {
     });
     ctx.globalAlpha = 1;
   }
+}
+function iniOf(nm) { return (nm || '').trim().split(/\s+/).slice(0, 2).map(w => w[0] || '').join('').toUpperCase(); }
+function groupRoundsData(t, g) {
+  const gms = groupMatches(t, g), byRound = {};
+  gms.forEach(m => { (byRound[m.round] = byRound[m.round] || []).push(m); });
+  return Object.keys(byRound).map(Number).sort((a, b) => a - b).map(r => {
+    const ms = byRound[r], playing = new Set();
+    ms.forEach(m => m.slots.forEach(s => playing.add(s.pid)));
+    return { r, ms, rest: g.pids.find(p => !playing.has(p)) };
+  });
+}
+/* Экспорт группового этапа картинкой: таблица + расписание туров (кто с кем и кто отдыхает). */
+function exportGroupsImage(t) {
+  const groups = (t.groups || []).filter(g => g.pids.length);
+  if (!groups.length) { uiAlert('Групп на экране нет — нечего экспортировать.'); return; }
+  const draws = drawsOn(t), adv = t.opts.advance || 2;
+  const SC = 2, pad = 40, headH = 84, bandGap = 32, gTitleH = 30;
+  const standW = 320, rowH = 26, sHeadH = 26;
+  const colW = 240, colGap = 12, rTitleH = 24, matchH = 26, rPad = 9, rGap = 10, rightCols = 3;
+  const W = pad + standW + 28 + (rightCols * colW + (rightCols - 1) * colGap) + pad;
+  const bands = groups.map(g => {
+    const st = standings(t, g), rounds = groupRoundsData(t, g);
+    const maxMs = Math.max(1, ...rounds.map(x => x.ms.length));
+    const blockH = rTitleH + maxMs * matchH + rPad;
+    const schedRows = Math.max(1, Math.ceil(rounds.length / rightCols));
+    const schedH = schedRows * blockH + (schedRows - 1) * rGap;
+    const standH = sHeadH + st.length * rowH;
+    return { g, st, rounds, blockH, contentH: Math.max(standH, schedH) };
+  });
+  const H = headH + bands.reduce((a, b) => a + gTitleH + b.contentH + bandGap, 0);
+  const cv = document.createElement('canvas');
+  cv.width = Math.round(W * SC); cv.height = Math.round(H * SC);
+  const ctx = cv.getContext('2d'); ctx.scale(SC, SC);
+  ctx.fillStyle = '#080706'; ctx.fillRect(0, 0, W, H);
+  drawExportHeader(ctx, t, W, pad);
+  ctx.textBaseline = 'middle';
+  let oy = headH;
+  for (const band of bands) {
+    const gms = groupMatches(t, band.g), gp = gms.filter(matchDone).length;
+    ctx.textAlign = 'left'; ctx.fillStyle = '#F2DA8C'; ctx.font = '700 15px Oswald, Arial';
+    const gt = `ГРУППА ${band.g.name.toUpperCase()}`;
+    ctx.fillText(gt, pad, oy + 14);
+    ctx.fillStyle = '#9C957F'; ctx.font = '600 11px Inter, Arial';
+    ctx.fillText(`${gp}/${gms.length} сыграно`, pad + ctx.measureText(gt).width + 16, oy + 14);
+    oy += gTitleH;
+    drawStandingsPNG(ctx, t, band, pad, oy, standW, rowH, sHeadH, adv, draws);
+    drawSchedulePNG(ctx, t, band, pad + standW + 28, oy, colW, colGap, rightCols, rTitleH, matchH, rGap);
+    oy += band.contentH + bandGap;
+  }
+  const fname = (t.name.replace(/[\\/:*?"<>|]/g, '').trim() || 'group') + '-группа.png';
+  cv.toBlob(b => {
+    const a = document.createElement('a'); a.href = URL.createObjectURL(b); a.download = fname; a.click(); URL.revokeObjectURL(a.href);
+    toast('Картинка группы в загрузках', '📸', true);
+  });
+}
+function drawStandingsPNG(ctx, t, band, x, y, w, rowH, headH, adv, draws) {
+  const st = band.st, cols = draws ? ['В', 'Н', 'П', '±', 'О'] : ['В', 'П', '±'], cw = 34;
+  const xs = cols.map((_, i) => x + w - (cols.length - i) * cw + cw / 2);
+  const nameMax = xs[0] - (x + 44) - 8;
+  ctx.textBaseline = 'middle';
+  ctx.fillStyle = '#6E6450'; ctx.font = '600 9px Oswald, Arial'; ctx.textAlign = 'left';
+  ctx.fillText('#', x + 10, y + headH / 2); ctx.fillText('КОМАНДА', x + 44, y + headH / 2);
+  ctx.textAlign = 'center'; cols.forEach((c, i) => ctx.fillText(c, xs[i], y + headH / 2)); ctx.textAlign = 'left';
+  let ry = y + headH;
+  st.forEach((s, i) => {
+    const q = i < adv, cy = ry + rowH / 2;
+    if (q) { ctx.fillStyle = 'rgba(212,175,55,.08)'; ctx.fillRect(x, ry, w, rowH); ctx.fillStyle = '#D4AF37'; ctx.fillRect(x, ry, 3, rowH); }
+    ctx.strokeStyle = 'rgba(39,34,26,.7)'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(x, ry + rowH); ctx.lineTo(x + w, ry + rowH); ctx.stroke();
+    ctx.fillStyle = q ? '#E7C558' : '#9C957F'; ctx.font = '700 12px Oswald, Arial'; ctx.textAlign = 'left';
+    ctx.fillText(String(i + 1), x + 9, cy);
+    const nm = pname(t, s.pid);
+    ctx.fillStyle = '#2A2419'; chamf(ctx, x + 22, cy - 8, 16, 16, 4); ctx.fill();
+    ctx.fillStyle = '#E7C558'; ctx.font = '800 7px Inter, Arial'; ctx.textAlign = 'center';
+    ctx.fillText(iniOf(nm), x + 30, cy + 0.5); ctx.textAlign = 'left';
+    ctx.fillStyle = q ? '#F2DA8C' : '#F5F1E6'; ctx.font = (q ? '700 ' : '600 ') + '12px Inter, Arial';
+    let n2 = nm; while (ctx.measureText(n2).width > nameMax && n2.length > 2) n2 = n2.slice(0, -2) + '…';
+    ctx.fillText(n2, x + 44, cy);
+    const vals = draws ? [s.w, s.d, s.l, s.sf - s.sa, s.pts] : [s.w, s.l, s.sf - s.sa];
+    ctx.font = '600 11px Inter, Arial'; ctx.textAlign = 'center';
+    vals.forEach((v, ci) => {
+      const isDiff = cols[ci] === '±';
+      ctx.fillStyle = isDiff ? (v > 0 ? '#3DDC97' : v < 0 ? '#E0654F' : '#9C957F') : '#C8C0AC';
+      ctx.fillText((isDiff && v > 0 ? '+' : '') + v, xs[ci], cy);
+    });
+    ctx.textAlign = 'left'; ry += rowH;
+  });
+}
+function drawSchedulePNG(ctx, t, band, ox, oy, colW, colGap, cols, rTitleH, matchH, rGap) {
+  band.rounds.forEach((rd, i) => {
+    const bx = ox + (i % cols) * (colW + colGap), by = oy + Math.floor(i / cols) * (band.blockH + rGap);
+    ctx.fillStyle = '#12100C'; ctx.fillRect(bx, by, colW, band.blockH);
+    ctx.strokeStyle = '#27221A'; ctx.lineWidth = 1; ctx.strokeRect(bx + 0.5, by + 0.5, colW - 1, band.blockH - 1);
+    ctx.fillStyle = '#F2DA8C'; ctx.font = '700 11px Oswald, Arial'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+    ctx.fillText(`ТУР ${rd.r}`, bx + 10, by + rTitleH / 2 + 1);
+    if (rd.rest != null) {
+      ctx.fillStyle = '#9C957F'; ctx.font = '600 9.5px Inter, Arial'; ctx.textAlign = 'right';
+      ctx.fillText('💤 ' + pname(t, rd.rest), bx + colW - 9, by + rTitleH / 2 + 1); ctx.textAlign = 'left';
+    }
+    let my = by + rTitleH;
+    const nameMax = colW / 2 - 26;
+    rd.ms.forEach(m => {
+      const cy = my + matchH / 2, a = m.slots[0].pid, b = m.slots[1].pid;
+      const wa = m.winner === a, wb = m.winner === b;
+      const sa = m.slots[0].score == null ? '·' : m.slots[0].score, sb = m.slots[1].score == null ? '·' : m.slots[1].score;
+      ctx.strokeStyle = 'rgba(39,34,26,.6)'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(bx + 6, my); ctx.lineTo(bx + colW - 6, my); ctx.stroke();
+      ctx.textBaseline = 'middle';
+      ctx.font = wa ? '800 11px Inter, Arial' : '600 11px Inter, Arial'; ctx.fillStyle = wa ? '#F2DA8C' : '#C8C0AC'; ctx.textAlign = 'left';
+      let na = pname(t, a); while (ctx.measureText(na).width > nameMax && na.length > 2) na = na.slice(0, -2) + '…';
+      ctx.fillText(na, bx + 10, cy);
+      ctx.font = wb ? '800 11px Inter, Arial' : '600 11px Inter, Arial'; ctx.fillStyle = wb ? '#F2DA8C' : '#C8C0AC'; ctx.textAlign = 'right';
+      let nb = pname(t, b); while (ctx.measureText(nb).width > nameMax && nb.length > 2) nb = nb.slice(0, -2) + '…';
+      ctx.fillText(nb, bx + colW - 10, cy);
+      ctx.font = '800 10px Inter, Arial'; ctx.textAlign = 'center'; ctx.fillStyle = '#9C957F';
+      ctx.fillText(`${sa} : ${sb}`, bx + colW / 2, cy); ctx.textAlign = 'left';
+      my += matchH;
+    });
+  });
 }
 
 async function addPlayerByName(t, nn) {
@@ -4018,7 +4139,12 @@ document.addEventListener('click', async e => {
     }
     render();
   }
-  else if (a === 'shot') { if (t) exportImage(t); }
+  else if (a === 'shot') {
+    if (!t) return;
+    if (document.querySelector('.bsec')) exportImage(t);
+    else if (t.groups && t.groups.length) exportGroupsImage(t);
+    else exportImage(t);
+  }
   else if (a === 'timer') { timerOpen = !timerOpen; renderTimerW(); renderTopbar(); }
   else if (a === 'tstart') {
     timer.run = !timer.run;
