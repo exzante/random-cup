@@ -373,6 +373,19 @@ table.stand tr:hover .grow-tools{opacity:1}
 .ground .grest{margin-left:auto;display:inline-flex;align-items:center;gap:3px;font-size:10px;font-weight:600;color:var(--muted);background:var(--panel3);border:1px solid var(--line);padding:1px 7px;white-space:nowrap;max-width:100%;overflow:hidden}
 .ground .grest b{color:var(--gold2);font-weight:700;overflow:hidden;text-overflow:ellipsis;max-width:110px}
 .ground-block.cur .grest{border-color:var(--gold-deep)}
+.ground .grest.clickable{cursor:pointer;transition:border-color .12s,color .12s}
+.ground .grest.clickable:hover{border-color:var(--gold2);color:var(--gold2)}
+/* выбор соперников матча */
+.mtwrap{display:flex;align-items:center;gap:10px;justify-content:center;flex-wrap:wrap}
+.mtwrap select{min-width:120px}
+.mtvs{color:var(--dim);font-size:12px;font-weight:600}
+/* выбор отдыхающего */
+.restlist{display:flex;flex-direction:column;gap:6px;max-height:min(56vh,420px);overflow:auto;margin-top:6px}
+.restopt{display:flex;align-items:center;gap:9px;width:100%;text-align:left;padding:8px 11px;border:1px solid var(--line);background:var(--panel2);transition:background .1s,border-color .1s}
+.restopt:hover{background:var(--gold-soft);border-color:var(--gold-deep)}
+.restopt.on{border-color:var(--gold-deep);background:var(--gold-soft)}
+.restopt .ro-n{flex:1;min-width:0;font-weight:600;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.restopt i{font-style:normal;font-size:11px;color:var(--gold2);white-space:nowrap}
 /* одна группа: таблица слева, матчи справа — всё видно сразу */
 .gwrap.solo{grid-template-columns:1fr}
 .gcard.solo{display:grid;grid-template-columns:minmax(270px,320px) 1fr;grid-template-areas:'head head' 'table matches';gap:14px 24px;align-items:start}
@@ -1201,8 +1214,12 @@ function groupMatchesHtml(t, g, locked) {
     const restName = resting.length === 1 ? pname(t, resting[0]) : '';
     const done = ms.filter(matchDone).length;
     const cur = r === curRound;
+    const editable = !locked && canEdit(t);
+    const restEl = restName
+      ? `<span class="grest ${editable ? 'clickable' : ''}" ${editable ? `data-action="restpick" data-gid="${g.id}" data-round="${r}"` : ''} data-tip="${editable ? 'Сменить, кто отдыхает в этом туре' : 'Отдыхает — без игры'}">💤 отдыхает: <b>${esc(restName)}</b></span>`
+      : '';
     const head = `<div class="ground">
-        <span class="grn">Тур ${r}</span><span class="grcount">${done}/${ms.length}</span>${restName ? `<span class="grest" data-tip="В этом туре отдыхает — без игры">💤 отдыхает: <b>${esc(restName)}</b></span>` : ''}
+        <span class="grn">Тур ${r}</span><span class="grcount">${done}/${ms.length}</span>${restEl}
       </div>`;
     return `<div class="ground-block ${cur ? 'cur' : ''}">${multi ? head : ''}<div class="gm-list">${ms.map(m => gmHtml(t, m, locked)).join('')}</div></div>`;
   }).join('');
@@ -3767,8 +3784,67 @@ function gmHtml(t, m, locked) {
     ${vs}
     <button class="score" ${dis} data-action="score" data-mid="${id}" data-si="1" data-tip="ЛКМ +1 · ПКМ −1">${s1}</button>
     <button class="pname right ${w1 ? 'winner' : ''}" ${dis} data-action="win" data-mid="${id}" data-si="1" ${r ? 'data-tip="Клик — победа"' : ''}>${esc(pname(t, m.slots[1].pid))}</button>
-    ${matchDone(m) && editable ? `<button class="mini" data-tip="Отменить результат" data-action="undo" data-mid="${id}">↺</button>` : '<span></span>'}
+    ${editable ? (matchDone(m)
+      ? `<button class="mini" data-tip="Отменить результат" data-action="undo" data-mid="${id}">↺</button>`
+      : `<button class="mini" data-tip="Поменять соперников в этом матче" data-action="gmteams" data-mid="${id}">↔</button>`) : '<span></span>'}
   </div>`;
+}
+// Сменить соперников в матче группы (организатор). Результат при смене сбрасывается.
+function matchTeamsModal(t, m) {
+  if (!t || !m || !canEdit(t)) return;
+  const g = t.groups && t.groups.find(x => 'g:' + x.id === m.bracket);
+  if (!g) return;
+  const sel = (id, cur) => `<select id="${id}">${g.pids.map(pid => `<option value="${pid}" ${pid === cur ? 'selected' : ''}>${esc(pname(t, pid))}</option>`).join('')}</select>`;
+  const ov = openModal(`
+    <div class="mtitle">Соперники матча</div>
+    <div class="mbody" style="text-align:center">
+      <div class="mtwrap">${sel('mtA', m.slots[0].pid)}<b class="mtvs">против</b>${sel('mtB', m.slots[1].pid)}</div>
+      <button class="btn sm ghost" id="mtSwap" style="margin-top:12px">⇄ Поменять стороны</button>
+      ${matchDone(m) ? '<div class="note" style="margin-top:10px">⚠ Результат этого матча сбросится.</div>' : ''}
+    </div>
+    <div class="mrow"><button class="btn ghost" id="mtCancel">Отмена</button><span style="flex:1"></span><button class="btn primary" id="mtOk">Сохранить</button></div>`, true);
+  const A = ov.querySelector('#mtA'), B = ov.querySelector('#mtB');
+  ov.querySelector('#mtSwap').onclick = () => { const a = A.value; A.value = B.value; B.value = a; };
+  ov.querySelector('#mtCancel').onclick = () => closeModal(ov);
+  ov.onclick = e => { if (e.target === ov && ov._downSelf) closeModal(ov); };
+  ov.querySelector('#mtOk').onclick = () => {
+    if (A.value === B.value) { uiAlert('Соперники должны быть разными.'); return; }
+    const changed = A.value !== m.slots[0].pid || B.value !== m.slots[1].pid;
+    m.slots[0].pid = A.value; m.slots[1].pid = B.value;
+    if (changed) { m.slots[0].score = null; m.slots[1].score = null; m.winner = null; m.draw = false; }
+    closeModal(ov); save(); render();
+    if (changed) toast('Соперники изменены', '🔀');
+  };
+}
+// Выбрать, кто отдыхает в туре. Меняем выбранную команду местами с текущей отдыхающей
+// во всём расписании — «каждый с каждым» сохраняется, меняются только туры отдыха.
+function restPickModal(t, gid, roundNo) {
+  const g = t.groups && t.groups.find(x => x.id === gid);
+  if (!g || !canEdit(t) || t.phase === 'po') return;
+  const inRound = groupMatches(t, g).filter(m => m.round === roundNo);
+  const playing = new Set(); inRound.forEach(m => m.slots.forEach(s => playing.add(s.pid)));
+  const curRest = g.pids.find(p => !playing.has(p));
+  const ov = openModal(`
+    <div class="mtitle">Кто отдыхает в туре ${roundNo}?</div>
+    <div class="mbody"><div class="restlist">${g.pids.map(pid => `<button type="button" class="restopt ${pid === curRest ? 'on' : ''}" data-pid="${pid}">${avatar(t, pid)}<span class="ro-n">${esc(pname(t, pid))}</span>${pid === curRest ? '<i>💤 сейчас</i>' : ''}</button>`).join('')}</div></div>
+    <div class="mrow"><span style="flex:1"></span><button class="btn ghost" id="rpClose">Закрыть</button></div>`, true);
+  ov.querySelector('#rpClose').onclick = () => closeModal(ov);
+  ov.onclick = e => { if (e.target === ov && ov._downSelf) closeModal(ov); };
+  ov.querySelectorAll('.restopt').forEach(btn => btn.onclick = async () => {
+    const newRest = btn.dataset.pid;
+    if (newRest === curRest) { closeModal(ov); return; }
+    const affected = groupMatches(t, g).filter(m => m.slots.some(s => s.pid === curRest || s.pid === newRest));
+    const played = affected.filter(matchDone).length;
+    if (played && !await uiConfirm(`${pname(t, newRest)} и ${pname(t, curRest)} поменяются местами в расписании. Их сыгранные матчи (${played}) сбросятся.`, { title: 'Сменить отдыхающего?', ok: 'Сменить', danger: true })) return;
+    const nr = newRest, cr = curRest;
+    groupMatches(t, g).forEach(m => {
+      let touched = false;
+      m.slots.forEach(s => { if (s.pid === cr) { s.pid = nr; touched = true; } else if (s.pid === nr) { s.pid = cr; touched = true; } });
+      if (touched) { m.slots[0].score = null; m.slots[1].score = null; m.winner = null; m.draw = false; }
+    });
+    closeModal(ov); save(); render();
+    toast(`${pname(t, nr)} отдыхает в туре ${roundNo}`, '💤', true);
+  });
 }
 
 /* ================= help ================= */
@@ -3870,6 +3946,8 @@ document.addEventListener('click', async e => {
   else if (a === 'coachoff') { localStorage.setItem('turnir_coach2', '1'); render(); }
   else if (a === 'editinfo') { infoEditModal(); }
   else if (a === 'chgfmt') { const tt = curT(); if (tt && canEdit(tt)) changeFormatModal(tt); }
+  else if (a === 'gmteams') { const m = t && t.matches[el.dataset.mid]; if (t && m && canEdit(t)) matchTeamsModal(t, m); }
+  else if (a === 'restpick') { if (t && canEdit(t)) restPickModal(t, el.dataset.gid, +el.dataset.round); }
   else if (a === 'draftcap') {
     if (!t || !isAdmin()) return;
     const p = regById(el.dataset.pid); if (!p) return;
