@@ -1640,6 +1640,68 @@ function draftForm(t) {
   save(); render();
   toast('Сетка сформирована — погнали!', '🔥', true);
 }
+// Смена формата уже созданного турнира. Участники (t.players — команды/игроки, составы,
+// капитаны) НЕ трогаются: пересобирается только сетка/расписание из тех же участников.
+function changeFormatModal(t) {
+  if (!t || !canEdit(t)) return;
+  if (!Object.keys(t.players || {}).length) { uiAlert('В турнире нет участников.'); return; }
+  const o = t.opts || {};
+  const cur = t.format;
+  const pr = progressOf(t);
+  const boSel = (id, val) => `<select id="${id}">${[[1, '1 игра'], [3, 'BO3'], [5, 'BO5'], [7, 'BO7']].map(([v, l]) => `<option value="${v}" ${(+val || 1) === v ? 'selected' : ''}>${l}</option>`).join('')}</select>`;
+  const fmtRadio = (v, l) => `<label class="chk"><input type="radio" name="cfFmt" value="${v}" ${cur === v ? 'checked' : ''}> ${l}</label>`;
+  const ov = openModal(`
+    <div class="mtitle">Сменить формат</div>
+    <div class="mbody" style="text-align:left">
+      <div class="frow inline" style="flex-wrap:wrap;gap:12px">
+        ${fmtRadio('single', '🏆 Олимпийская')}${fmtRadio('double', '🔁 Двойная')}${fmtRadio('rr', '🔄 Круговая')}${fmtRadio('groups', '👥 Группы')}
+      </div>
+      <div class="frow inline hidden" id="cfGroupsRow" style="margin-top:10px">
+        <label class="chk">Групп:&nbsp;<select id="cfGroups">${[1, 2, 3, 4, 5, 6, 8].map(n => `<option value="${n}" ${(o.groupCount || 2) === n ? 'selected' : ''}>${n === 1 ? '1 — все со всеми' : n}</option>`).join('')}</select></label>
+        <label class="chk">Проходят:&nbsp;<select id="cfAdv">${[1, 2, 3, 4].map(n => `<option value="${n}" ${(o.advance || 2) === n ? 'selected' : ''}>топ-${n}</option>`).join('')}</select></label>
+      </div>
+      <div class="frow inline" style="margin-top:10px">
+        <label class="chk" id="cfBoGroupW"><span id="cfBoGroupL">Группа</span>:&nbsp;${boSel('cfBoGroup', o.boGroup)}</label>
+        <label class="chk" id="cfBoPoW">Плей-офф:&nbsp;${boSel('cfBoPo', o.boPlayoff)}</label>
+        <label class="chk" id="cfBoFinalW">Финал:&nbsp;${boSel('cfBoFinal', o.boFinal)}</label>
+      </div>
+      <div class="frow inline" id="cfThirdRow" style="margin-top:10px">
+        <label class="chk"><input type="checkbox" id="cfThird" ${o.thirdPlace ? 'checked' : ''}> Матч за 3-е место</label>
+      </div>
+      <div class="note" id="cfWarn" style="margin-top:12px;line-height:1.5"></div>
+    </div>
+    <div class="mrow"><button class="btn ghost" id="cfCancel">Отмена</button><span style="flex:1"></span><button class="btn primary" id="cfOk">Пересобрать</button></div>`, true);
+  const upd = () => {
+    const f = ov.querySelector('input[name=cfFmt]:checked').value;
+    ov.querySelector('#cfGroupsRow').classList.toggle('hidden', f !== 'groups');
+    ov.querySelector('#cfBoGroupW').classList.toggle('hidden', f !== 'groups' && f !== 'rr');
+    ov.querySelector('#cfBoPoW').classList.toggle('hidden', f === 'rr');
+    ov.querySelector('#cfBoFinalW').classList.toggle('hidden', f === 'rr');
+    ov.querySelector('#cfBoGroupL').textContent = f === 'rr' ? 'Матчи' : 'Группа';
+    ov.querySelector('#cfThirdRow').classList.toggle('hidden', f === 'rr');
+    ov.querySelector('#cfWarn').innerHTML = pr.played > 0
+      ? `⚠ Сыграно матчей: <b>${pr.played}</b> — при пересборке результаты сотрутся. Команды и составы сохранятся.`
+      : `Пересоберётся только сетка/расписание. Команды, капитаны и составы сохранятся (сыграно 0 матчей — терять нечего).`;
+  };
+  ov.querySelectorAll('input[name=cfFmt]').forEach(r => r.onchange = upd);
+  upd();
+  ov.querySelector('#cfCancel').onclick = () => closeModal(ov);
+  ov.onclick = e => { if (e.target === ov && ov._downSelf) closeModal(ov); };
+  ov.querySelector('#cfOk').onclick = async () => {
+    const f = ov.querySelector('input[name=cfFmt]:checked').value;
+    if (pr.played > 0 && !await uiConfirm(`Сыгранные результаты (${pr.played}) сотрутся — турнир пересоберётся заново.`, { title: 'Пересобрать?', ok: 'Пересобрать', danger: true })) return;
+    t.format = f;
+    t.opts.groupCount = +ov.querySelector('#cfGroups').value;
+    t.opts.advance = +ov.querySelector('#cfAdv').value;
+    t.opts.boGroup = +ov.querySelector('#cfBoGroup').value;
+    t.opts.boPlayoff = +ov.querySelector('#cfBoPo').value;
+    t.opts.boFinal = +ov.querySelector('#cfBoFinal').value;
+    t.opts.thirdPlace = ov.querySelector('#cfThird').checked;
+    buildBracket(t, Object.keys(t.players));
+    closeModal(ov); save(); render();
+    toast('Формат изменён — пересобрано', '🔄', true);
+  };
+}
 function doSwap(t, aSel, bSel) {
   const ma = t.matches[aSel.mid], mb = t.matches[bSel.mid];
   const pa = ma.slots[aSel.slot].pid, pb = mb.slots[bSel.slot].pid;
@@ -2547,6 +2609,7 @@ function tbMenuHtml() {
     items.push(`<button data-action="import">📂 Импорт из файла</button>`);
   }
   if (view.screen === 'tour' && curT()) {
+    if (canEdit(curT())) items.push(`<button data-action="chgfmt">🔄 Сменить формат</button>`);
     items.push(`<button data-action="shot">📸 Скачать картинкой</button>`);
     items.push(`<button data-action="tv">📺 Режим проектора</button>`);
   }
@@ -3781,6 +3844,7 @@ document.addEventListener('click', async e => {
   else if (a === 'help') showHelp();
   else if (a === 'coachoff') { localStorage.setItem('turnir_coach2', '1'); render(); }
   else if (a === 'editinfo') { infoEditModal(); }
+  else if (a === 'chgfmt') { const tt = curT(); if (tt && canEdit(tt)) changeFormatModal(tt); }
   else if (a === 'draftcap') {
     if (!t || !isAdmin()) return;
     const p = regById(el.dataset.pid); if (!p) return;
