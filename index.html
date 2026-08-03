@@ -894,7 +894,7 @@ function linkify(str) {
 function curT() { return DB.tournaments.find(t => t.id === view.tid) || null; }
 function pname(t, pid) { return pid === 'BYE' ? 'bye' : (t.players[pid] ? t.players[pid].name : '?'); }
 
-const FMT_LABEL = { single: 'Олимпийская сетка', double: 'Double elimination', groups: 'Группы + плей-офф', rr: 'Каждый с каждым' };
+const FMT_LABEL = { single: 'Олимпийская сетка', double: 'Двойная сетка', groups: 'Группы + плей-офф', rr: 'Каждый с каждым' };
 const FMT_ICO = { single: '⚡', double: '♻️', groups: '👥', rr: '🔁' };
 function isGroupStage(t) { return t.format === 'rr' || (t.format === 'groups' && t.phase === 'groups'); }
 
@@ -1097,8 +1097,10 @@ function stageBestOf(t, m) {
 }
 function winsNeededM(t, m) { return Math.ceil(stageBestOf(t, m) / 2); }
 // Победитель из счёта: BO1 — у кого больше; BO3+ — кто первым набрал need. Ничья счёта → null.
+// Не зависит от isReady (тот исключает уже решённые матчи) — считаем прямо из слотов.
 function winnerFromScore(t, m) {
-  if (!isReady(m)) return null;
+  const a = m.slots[0].pid, b = m.slots[1].pid;
+  if (!a || !b || a === 'BYE' || b === 'BYE') return null;
   const need = winsNeededM(t, m);
   const s0 = m.slots[0].score || 0, s1 = m.slots[1].score || 0;
   if (s0 === s1) return null;
@@ -2944,7 +2946,12 @@ function renderHints() {
       ${touch ? '' : `<span class="hchip"><span class="ic">🔍</span>Ctrl+колесо — зум</span>`}`;
     return;
   }
-  el.innerHTML = `
+  const touchE = matchMedia('(hover:none)').matches;
+  el.innerHTML = touchE ? `
+    <span class="hchip"><span class="ic">🏆</span><b>жми на победителя</b>&nbsp;— пройдёт сам</span>
+    <span class="hchip"><span class="ic">🔢</span><b>счёт:</b>&nbsp;тап +1 · держи −1</span>
+    <span class="hchip"><span class="ic">↺</span>ошибся — отменить</span>
+    <span class="hchip"><span class="ic">✊</span>держи имя и тяни — перенести</span>` : `
     <span class="hchip"><span class="ic">👆</span><b>клик по имени</b>&nbsp;— победа</span>
     <span class="hchip"><span class="ic">✊</span><b>зажми и тяни</b>&nbsp;— перенос игрока</span>
     <span class="hchip"><span class="ic">🔢</span><b>счёт:</b>&nbsp;ЛКМ +1 · ПКМ −1</span>
@@ -3554,7 +3561,7 @@ function screenCreate() {
         <label class="fmtopt"><input type="radio" name="fmt" value="single" checked>
           <span class="card">${svgSingle}Олимпийка<small>проиграл — вылетел</small></span></label>
         <label class="fmtopt"><input type="radio" name="fmt" value="double">
-          <span class="card">${svgDouble}Double elim<small>вторая жизнь в нижней сетке</small></span></label>
+          <span class="card">${svgDouble}Двойная<small>второй шанс в нижней сетке</small></span></label>
         <label class="fmtopt"><input type="radio" name="fmt" value="groups">
           <span class="card">${svgGroups}Группы<small>круговая, потом плей-офф</small></span></label>
         <label class="fmtopt"><input type="radio" name="fmt" value="rr">
@@ -3654,14 +3661,14 @@ function coachHtml() {
   const ct = curT();
   if (ct && !canEdit(ct)) return '';   // зрителю судейская памятка ни к чему
   if (localStorage.getItem('turnir_coach2')) return '';
+  const touch = matchMedia('(hover:none)').matches;
   return `<div class="coach cut">
     <span class="ic">💡</span>
-    <span class="tx"><b>Как судить:</b> кликни по имени победителя — он пройдёт дальше сам. <b>Перенести игрока</b> — зажми его имя (ЛКМ или ПКМ) и тяни на другой слот или группу.
+    <span class="tx"><b>Как вести:</b> жми по имени <b>победителя</b> — он сам пройдёт дальше.
       <span class="krow">
-        <span>🔢 счёт — ЛКМ +1, ПКМ −1</span>
-        <span>↺ откатить результат</span>
+        <span>🔢 счёт: ${touch ? 'тап +1, держи палец −1' : 'ЛКМ +1, ПКМ −1'}</span>
+        <span>↺ ошибся — отменить</span>
         <span>✕ убрать игрока</span>
-        <span>＋ добавить в свободный слот</span>
       </span>
     </span>
     <button class="btn sm" data-action="coachoff">Понятно</button>
@@ -4082,7 +4089,7 @@ function showHelp() {
     <p><b>Добавление при полной сетке:</b> сетка расширится сама; если уже есть сыгранные матчи — спросит, потому что они сбросятся (Ctrl+Z вернёт).</p>
     <h4>🏆 Форматы</h4>
     <p><b>Олимпийка</b> — проиграл и вылетел; опционально матч за 3-е место.</p>
-    <p><b>Double elim</b> — после поражения падаешь в нижнюю сетку, второе поражение — вылет. Если победитель нижней берёт гранд-финал, играется решающий матч.</p>
+    <p><b>Двойная сетка</b> — после поражения падаешь в нижнюю сетку, второе поражение — вылет. Если победитель нижней берёт гранд-финал, играется решающий матч.</p>
     <p><b>Группы</b> — круговая внутри групп, потом топ-N из каждой выходят в плей-офф. Можно <b>1 группу</b> (все со всеми). Игроки раскидываются «змейкой», чтобы сильные (верх списка) разошлись по группам.</p>
     <p><b>Каждый с каждым</b> — круговая лига: все играют со всеми, чемпион по таблице.</p>
     <p><b>Расписание по турам:</b> матчи группы разбиты на туры, показано <b>кто отдыхает</b> (при нечётном числе), текущий тур подсвечен. Порядок таблицы при равенстве решает <b>личная встреча</b>, затем разница счёта.</p>
@@ -4505,29 +4512,44 @@ document.addEventListener('click', async e => {
   }
 });
 
+// −1 к счёту (правый клик на ПК, долгий тап на телефоне)
+function decScore(sc) {
+  const t = curT();
+  if (!t || !canEdit(t)) return;
+  const m = t.matches[sc.dataset.mid], si = +sc.dataset.si;
+  if (!m || !m.slots[si].pid || m.slots[si].pid === 'BYE' || m.auto) return;
+  const isGroup = m.bracket && m.bracket.startsWith('g:');
+  if (isGroup && t.phase === 'po') return;   // группы закрыты
+  if (!isGroup && m.winner) return;          // сетка: сначала «↺ Отменить»
+  m.slots[si].score = Math.max(0, (m.slots[si].score || 0) - 1);
+  if (isGroup) m.winner = winnerFromScore(t, m);
+  save(); render();
+}
 document.addEventListener('contextmenu', e => {
   const sc = e.target.closest('[data-action="score"]');
-  if (sc && !sc.disabled) {
-    e.preventDefault();
-    const t = curT();
-    if (!t || !canEdit(t)) return;
-    const m = t.matches[sc.dataset.mid], si = +sc.dataset.si;
-    if (!m.slots[si].pid || m.slots[si].pid === 'BYE' || m.auto) return;
-    // Группа: минус работает всегда, победитель пересчитывается (может сняться при равенстве)
-    if (m.bracket && m.bracket.startsWith('g:')) {
-      if (t.phase === 'po') return;
-      m.slots[si].score = Math.max(0, (m.slots[si].score || 0) - 1);
-      m.winner = winnerFromScore(t, m);
-      save(); render();
-      return;
-    }
-    if (m.winner) return;                                   // сетка: сначала «↺ Отменить»
-    m.slots[si].score = Math.max(0, (m.slots[si].score || 0) - 1);
-    save(); render();
-    return;
-  }
+  if (sc && !sc.disabled) { e.preventDefault(); decScore(sc); return; }
   if (e.target.closest('.pname[data-mid], tr[data-pid]')) e.preventDefault();
 });
+// Долгий тап по счёту на телефоне — это «−1» (на телефоне нет правой кнопки)
+let scHold = null, scHoldXY = null;
+document.addEventListener('pointerdown', e => {
+  if (e.pointerType === 'mouse') return;
+  const sc = e.target.closest && e.target.closest('[data-action="score"]');
+  if (!sc || sc.disabled) return;
+  scHoldXY = { x: e.clientX, y: e.clientY };
+  scHold = setTimeout(() => {
+    scHold = null;
+    suppressClick = true;                    // подавить последующий +1
+    setTimeout(() => { suppressClick = false; }, 500);
+    decScore(sc);
+    if (navigator.vibrate) { try { navigator.vibrate(15); } catch (er) {} }
+  }, 420);
+});
+document.addEventListener('pointermove', e => {
+  if (scHold && scHoldXY && Math.hypot(e.clientX - scHoldXY.x, e.clientY - scHoldXY.y) > 9) { clearTimeout(scHold); scHold = null; }
+});
+document.addEventListener('pointerup', () => { if (scHold) { clearTimeout(scHold); scHold = null; } });
+document.addEventListener('pointercancel', () => { if (scHold) { clearTimeout(scHold); scHold = null; } });
 
 document.addEventListener('change', e => {
   if (e.target.id === 'regMmr') { regMmrMin = +e.target.value; render(); return; }
