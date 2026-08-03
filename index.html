@@ -2092,6 +2092,33 @@ function chamf(ctx, x, y, w, h, c) {
   ctx.lineTo(x + w, y + h); ctx.lineTo(x + c, y + h); ctx.lineTo(x, y + h - c);
   ctx.closePath();
 }
+// Ссылка на турнир для шаринга: живая (для зрителей), иначе просто сайт.
+function viewerLink(t) {
+  const base = location.protocol === 'file:' ? PUB_BASE : location.origin + location.pathname;
+  return (t && t.share && t.share.id) ? base + '?t=' + t.share.id : base;
+}
+// Синхронно (без toBlob) — чтобы navigator.share сработал в рамках жеста пользователя.
+function canvasToBlob(cv) {
+  const parts = cv.toDataURL('image/png').split(',');
+  const bin = atob(parts[1]), arr = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+  return new Blob([arr], { type: 'image/png' });
+}
+// Телефон → системное «Поделиться» с картинкой и ссылкой (WhatsApp). ПК → скачать + ссылка в буфер.
+function deliverImage(cv, fname, t, what) {
+  const blob = canvasToBlob(cv), link = viewerLink(t);
+  const file = new File([blob], fname, { type: 'image/png' });
+  const text = `${t.name} · Random Cup\n${link}`;
+  if (navigator.canShare && navigator.canShare({ files: [file] })) {
+    navigator.share({ files: [file], text }).then(() => toast('Отправлено', '📲', true)).catch(() => {});
+    return;
+  }
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = fname; a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1500);
+  if (navigator.clipboard) navigator.clipboard.writeText(link).then(
+    () => toast(`${what} скачана, ссылка в буфере`, '📸', true), () => toast(`${what} в загрузках`, '📸', true));
+  else toast(`${what} в загрузках`, '📸', true);
+}
 // Общая шапка экспорта (логотип, название, формат, чемпион). Возвращает pid чемпиона.
 function drawExportHeader(ctx, t, W, pad) {
   const grad = ctx.createRadialGradient(W / 2, -150, 50, W / 2, -150, 600);
@@ -2164,14 +2191,7 @@ function exportImage(t) {
     oy += d.H + secGap;
   }
   const fname = (t.name.replace(/[\\/:*?"<>|]/g, '').trim() || 'bracket') + '.png';
-  cv.toBlob(b => {
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(b);
-    a.download = fname;
-    a.click();
-    URL.revokeObjectURL(a.href);
-    toast('Картинка сетки в загрузках', '📸', true);
-  });
+  deliverImage(cv, fname, t, 'Картинка сетки');
 }
 function drawSectionPNG(ctx, t, d, ox, oy, champ) {
   const byId = {};
@@ -2301,10 +2321,7 @@ function exportGroupsImage(t) {
     oy += band.contentH + bandGap;
   }
   const fname = (t.name.replace(/[\\/:*?"<>|]/g, '').trim() || 'group') + '-группа.png';
-  cv.toBlob(b => {
-    const a = document.createElement('a'); a.href = URL.createObjectURL(b); a.download = fname; a.click(); URL.revokeObjectURL(a.href);
-    toast('Картинка группы в загрузках', '📸', true);
-  });
+  deliverImage(cv, fname, t, 'Картинка группы');
 }
 function drawStandingsPNG(ctx, t, band, x, y, w, rowH, headH, adv, draws) {
   const st = band.st, cols = draws ? ['В', 'Н', 'П', '±', 'О'] : ['В', 'П', '±'], cw = 34;
@@ -2773,7 +2790,7 @@ function tbMenuHtml() {
   }
   if (view.screen === 'tour' && curT()) {
     if (canEdit(curT())) items.push(`<button data-action="chgfmt">🔄 Сменить формат</button>`);
-    items.push(`<button data-action="shot">📸 Скачать картинкой</button>`);
+    items.push(`<button data-action="shot">📲 Поделиться картинкой</button>`);
     items.push(`<button data-action="tv">📺 Режим проектора</button>`);
   }
   items.push(`<button data-action="mute">${soundOn ? '🔊 Звук: включён' : '🔇 Звук: выключен'}</button>`);
