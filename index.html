@@ -571,6 +571,24 @@ canvas.confetti{position:fixed;inset:0;z-index:100;pointer-events:none}
 .prow.go{--bl:linear-gradient(135deg,var(--green),var(--line) 70%)}
 .poschip.going{--bl:linear-gradient(135deg,var(--green),var(--gold-deep))}
 .poschip .pcgo{font-size:11px;margin-right:-2px;flex-shrink:0}
+/* самостоятельная отметка ?join=1 */
+.joinwrap{max-width:560px;margin:16px auto 90px;padding:0 12px;display:flex;flex-direction:column;gap:12px}
+.joinwrap .joinsearch{order:0;width:100%}
+.joinhead{display:flex;align-items:center;gap:14px;padding:16px 18px;--c:16px}
+.joinhead .jh-logo{flex:none;width:44px;height:44px;display:flex;align-items:center;justify-content:center;font-family:var(--disp);font-weight:700;font-size:18px;color:#161204;background:linear-gradient(135deg,var(--gold2),var(--gold-deep));clip-path:polygon(0 0,100% 0,100% 72%,86% 100%,0 100%)}
+.joinhead .jh-t{font-family:var(--disp);font-size:19px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--gold2);line-height:1.1}
+.joinhead .jh-s{font-size:13px;color:var(--muted);margin-top:3px}
+.joinwarn{font-size:12.5px;line-height:1.5;color:var(--muted);background:var(--gold-soft);border:1px solid var(--gold-deep);padding:9px 13px}
+.joinwarn b{color:var(--gold2)}
+.joinlist{display:flex;flex-direction:column;gap:7px}
+.joinrow{display:flex;align-items:center;gap:11px;padding:9px 13px;--c:10px;--bl:var(--line)}
+.joinrow.go{--bl:linear-gradient(135deg,var(--green),var(--gold-deep));background:linear-gradient(90deg,rgba(61,220,151,.07),transparent)}
+.joinrow .jr-col{flex:1;min-width:0;display:flex;flex-direction:column}
+.joinrow .jr-n{font-weight:700;font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.joinrow .jr-real{font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.joinrow .jr-mmr{flex:none;font-family:var(--disp);font-weight:700;font-size:14px;color:var(--gold2);font-variant-numeric:tabular-nums}
+.joinrow .jr-go{flex:none;min-width:76px}
+.joinfoot{text-align:center;padding:4px 10px 0}
 /* капитанский драфт */
 .drafttools{font-size:12.5px;color:var(--muted);background:var(--panel2);border:1px solid var(--line);padding:9px 13px;margin-bottom:8px;line-height:1.55}
 .drafttools b{color:var(--gold2)}
@@ -1860,7 +1878,7 @@ async function playerLogin() {
 function playerFromRow(r) {
   return { id: r.id, name: r.name, nick: r.nick || '', mmr: r.mmr, phone: r.phone || '', pos: r.pos || '',
     mmrHistory: Array.isArray(r.mmr_history) ? r.mmr_history : [], note: r.note || '',
-    lft: !!r.lft, lftNote: r.lft_note || '', going: !!r.going,
+    lft: !!r.lft, lftNote: r.lft_note || '', going: !!r.going, goingAt: r.going_at ? Date.parse(r.going_at) : 0,
     account: r.account || null, updatedAt: r.updated_at ? Date.parse(r.updated_at) : 0 };
 }
 function playerToPayload(p) {
@@ -2746,7 +2764,8 @@ function render() {
   app.classList.toggle('anim', render._last !== key);
   render._last = key;
   const scrolls = [...app.querySelectorAll('.bsec')].map(s => ({ l: s.scrollLeft, t: s.scrollTop }));
-  if (view.screen === 'home') app.innerHTML = screenHome();
+  if (view.screen === 'join') app.innerHTML = screenJoin();
+  else if (view.screen === 'home') app.innerHTML = screenHome();
   else if (view.screen === 'create') app.innerHTML = screenCreate();
   else if (view.screen === 'players') app.innerHTML = screenPlayers();
   else if (view.screen === 'profile') app.innerHTML = screenProfile(view.pid);
@@ -2962,6 +2981,30 @@ let regView = 'pos';        // по позициям по умолчанию (с
 let regPosFilter = 'all';   // all | one | flex
 let regMmrMin = 0;          // фильтр по рейтингу
 let regGoing = false;       // показывать только «идут на турик»
+let joinMode = false;       // режим самостоятельной отметки по ссылке (?join=1)
+// Самостоятельная отметка «иду» игроком из базы (без пароля). Открытый чек-ин.
+async function selfGoing(pid) {
+  try {
+    await loadSB();
+    const { error } = await sb.rpc('rc_self_going', { p_id: pid });
+    if (error) throw error;
+    const p = regById(pid); if (p) { p.going = true; p.goingAt = Date.now(); }
+    return true;
+  } catch (e) { uiAlert('Не получилось отметиться — проверь интернет.'); return false; }
+}
+async function selfLeave(pid) {
+  try {
+    await loadSB();
+    const { error } = await sb.rpc('rc_self_leave', { p_id: pid });
+    if (error) throw error;
+    const p = regById(pid); if (p) p.going = false;
+    return true;
+  } catch (e) { uiAlert('Не получилось снять отметку — проверь интернет.'); return false; }
+}
+function joinLink() {
+  const base = location.protocol === 'file:' ? PUB_BASE : location.origin + location.pathname;
+  return base + '?join=1';
+}
 async function goingSet(pid, on) {
   if (!isAdmin()) return;
   try {
@@ -2987,6 +3030,32 @@ function posRowsHtml(list) {
       <div class="posrowlist">${players.length ? players.map(posChipHtml).join('') : '<span class="note">никого</span>'}</div>
     </div>`;
   }).join('');
+}
+/* Экран самостоятельной отметки по ссылке (?join=1): найди себя в базе и жми «иду». */
+function screenJoin() {
+  const players = regPlayers();
+  const going = players.filter(p => p.going).length;
+  return `<div class="joinwrap">
+    <div class="joinhead cut">
+      <div class="jh-logo">RC</div>
+      <div class="jh-txt">
+        <div class="jh-t">Отметься на ближайший сбор</div>
+        <div class="jh-s">Найди себя в списке и жми <b>«я иду»</b>. Уже идёт: <b>${going}</b></div>
+      </div>
+    </div>
+    <div class="joinwarn">⚠️ Отмечайся <b>только за себя</b>. Список — наша база игроков, организаторы знают каждого. Кто отметит не себя — уберут.</div>
+    <input id="joinSearch" class="regsearch joinsearch" placeholder="🔎 Найди себя — имя или ник…" autocomplete="off">
+    ${players.length ? `<div class="joinlist">${players.map(joinRow).join('')}</div>` : `<div class="empty"><span class="big">⏳</span>База загружается…</div>`}
+    <div class="joinfoot note">Тебя нет в списке? Напиши организатору в WhatsApp — добавит в базу.</div>
+  </div>`;
+}
+function joinRow(p) {
+  return `<div class="joinrow cut ${p.going ? 'go' : ''}" data-search="${esc((p.name + ' ' + (p.nick || '')).toLowerCase())}">
+    ${avatarByName(p.nick || p.name)}
+    <div class="jr-col"><span class="jr-n">${esc(p.nick || p.name)}</span>${p.nick && p.name.toLowerCase() !== p.nick.toLowerCase() ? `<span class="jr-real">${esc(p.name)}</span>` : ''}</div>
+    ${p.mmr != null ? `<span class="jr-mmr">${p.mmr}</span>` : ''}
+    <button class="btn sm ${p.going ? 'primary' : 'ghost'} jr-go" data-action="joingo" data-pid="${p.id}">${p.going ? '✓ иду' : 'я иду'}</button>
+  </div>`;
 }
 function screenPlayers() {
   const admin = isAdmin();
@@ -3025,6 +3094,7 @@ function screenPlayers() {
       <h2>База игроков</h2><span class="regcount">${DB.players.length}</span>
       <span style="flex:1"></span>
       <button class="btn sm ${regGoing ? 'primary' : 'ghost'}" data-action="goingfilter" data-tip="Показать только тех, кто идёт на ближайший турик (пул для драфта)">✅ Идут${goingCount ? ` (${goingCount})` : ''}</button>
+      ${admin ? `<button class="btn sm ghost" data-action="joinlink" data-tip="Ссылка «отметься на сбор» — кинь в WhatsApp, народ отметится сам">🔗 Ссылка отметки</button>` : ''}
       ${admin && regGoing ? `<button class="btn sm ghost danger" data-action="goingclear" data-tip="Снять участие у всех (между турниками)">Сбросить</button>` : ''}
       <select id="regMmr" class="regmmrsel" data-tip="Фильтр по рейтингу">${[[0, 'Любой MMR'], [2000, '2000+'], [4000, '4000+'], [6000, '6000+'], [8000, '8000+'], [10000, '10000+']].map(([v, l]) => `<option value="${v}" ${regMmrMin === v ? 'selected' : ''}>${l}</option>`).join('')}</select>
       <span class="segbtns" data-tip="Фильтр по позициям">${[['all', 'Все'], ['one', '1 поз.'], ['flex', 'Флекс']].map(([v, l]) => `<button class="btn sm ${regPosFilter === v ? 'primary' : 'ghost'}" data-action="posfilter" data-val="${v}">${l}</button>`).join('')}</span>
@@ -4217,6 +4287,19 @@ document.addEventListener('click', async e => {
   else if (a === 'regview') { regView = regView === 'pos' ? 'list' : 'pos'; render(); }
   else if (a === 'goingfilter') { regGoing = !regGoing; render(); }
   else if (a === 'goingtoggle') { if (isAdmin()) { const p = regById(el.dataset.pid); if (p) goingSet(p.id, !p.going); } }
+  else if (a === 'joingo') {
+    const p = regById(el.dataset.pid); if (!p) return;
+    const wasGoing = p.going;
+    const ok = wasGoing ? await selfLeave(p.id) : await selfGoing(p.id);
+    if (ok) { render(); toast(wasGoing ? 'Отметка снята' : 'Готово — ты в списке! 🔥', wasGoing ? '' : '✅', true); }
+  }
+  else if (a === 'joinlink') {
+    const link = joinLink();
+    try { if (navigator.share && matchMedia('(hover:none)').matches) { await navigator.share({ text: 'Отметься на ближайший сбор 👇\n' + link }); return; } }
+    catch (err) { if (err && err.name === 'AbortError') return; }
+    try { await navigator.clipboard.writeText(link); toast('Ссылка на отметку скопирована — кидай в WhatsApp', '🔗', true); }
+    catch (err) { toast(link); }
+  }
   else if (a === 'goingclear') {
     if (!isAdmin()) return;
     if (await uiConfirm('Снять участие у всех игроков? (обычно перед новым турником)', { title: 'Сбросить участие?', ok: 'Сбросить', danger: true })) {
@@ -4580,6 +4663,10 @@ document.addEventListener('input', e => {
   if (e.target.id === 'cPlayers') updatePCount();
   if (e.target.id === 'cReg') renderRegPick(e.target.value);
   if (e.target.id === 'cCap') updateCapInfo();
+  if (e.target.id === 'joinSearch') {
+    const q = e.target.value.trim().toLowerCase();
+    document.querySelectorAll('.joinrow').forEach(el => { el.style.display = (!q || (el.dataset.search || '').includes(q)) ? '' : 'none'; });
+  }
   if (e.target.id === 'pSearch') {
     const q = e.target.value.trim().toLowerCase();
     const match = el => !q || (el.dataset.search || '').includes(q);
@@ -4684,8 +4771,15 @@ document.getElementById('importFile').addEventListener('change', e => {
   e.target.value = '';
 });
 
-render();
-initLiveFromURL();
+if (new URLSearchParams(location.search).get('join')) {
+  joinMode = true;
+  view = { screen: 'join', tid: null };
+  render();
+  regLoad().then(() => { if (view.screen === 'join') render(); });
+} else {
+  render();
+  initLiveFromURL();
+}
 lobbyLoad();          // для бейджа «вас откликнули» на главной
 ensureLobbyRealtime(); // живое обновление лобби/заявок
 tourCloudLoad();       // восстановить турниры из облака (если вошёл организатором)
