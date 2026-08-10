@@ -1704,6 +1704,21 @@ function draftForm(t) {
   save(); render();
   toast('Сетка сформирована — погнали!', '🔥', true);
 }
+// Убрать матч за 3-е место из турнира (не трогая остальную сетку/результаты).
+// Чистим ссылки lTo полуфиналов на него, иначе пересчёт упадёт.
+function removeThird(t) {
+  if (!t || !t.thirdId) return;
+  const tid = t.thirdId;
+  Object.values(t.matches).forEach(m => {
+    if (m.lTo && m.lTo.mid === tid) m.lTo = null;
+    if (m.wTo && m.wTo.mid === tid) m.wTo = null;
+  });
+  delete t.matches[tid];
+  t.thirdId = null;
+  t.opts.thirdPlace = false;
+  save(); render();
+  toast('Матч за 3-е место убран', '🥉', true);
+}
 // Смена формата уже созданного турнира. Участники (t.players — команды/игроки, составы,
 // капитаны) НЕ трогаются: пересобирается только сетка/расписание из тех же участников.
 function changeFormatModal(t) {
@@ -2813,6 +2828,7 @@ function tbMenuHtml() {
   }
   if (view.screen === 'tour' && curT()) {
     if (canEdit(curT())) items.push(`<button data-action="chgfmt">🔄 Сменить формат</button>`);
+    if (canEdit(curT()) && curT().thirdId) items.push(`<button data-action="rmthird">🥉 Убрать матч за 3-е</button>`);
     items.push(`<button data-action="shot">📲 Поделиться картинкой</button>`);
     items.push(`<button data-action="tv">📺 Режим проектора</button>`);
   }
@@ -4164,6 +4180,7 @@ document.addEventListener('click', async e => {
   else if (a === 'coachoff') { localStorage.setItem('turnir_coach2', '1'); render(); }
   else if (a === 'editinfo') { infoEditModal(); }
   else if (a === 'chgfmt') { const tt = curT(); if (tt && canEdit(tt)) changeFormatModal(tt); }
+  else if (a === 'rmthird') { const tt = curT(); if (tt && tt.thirdId && canEdit(tt) && await uiConfirm('Убрать матч за 3-е место из этого турнира? Если в нём был результат — тоже уберётся.', { title: 'Убрать матч за 3-е?', ok: 'Убрать', danger: true })) removeThird(tt); }
   else if (a === 'gmteams') { const m = t && t.matches[el.dataset.mid]; if (t && m && canEdit(t)) matchTeamsModal(t, m); }
   else if (a === 'restpick') { if (t && canEdit(t)) restPickModal(t, el.dataset.gid, +el.dataset.round); }
   else if (a === 'draftcap') {
