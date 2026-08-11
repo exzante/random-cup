@@ -2052,6 +2052,8 @@ function applyRemote(code, data) {
   save();
   applyingRemote = false;
   if (view.screen === 'tour' ? view.tid === fresh.id : view.screen === 'home') render();
+  // Драфт показывает MMR из базы — подтянем свежую, чтобы зритель видел актуальные рейтинги.
+  if (fresh.phase === 'draft' && view.screen === 'tour' && view.tid === fresh.id) regLoad();
 }
 async function shareFlow(t) {
   if (!t.share) {
@@ -2129,6 +2131,7 @@ async function initLiveFromURL() {
     view = { screen: 'tour', tid: fresh.id };
     ensureLive(fresh);
     render();
+    regLoad();   // свежая база игроков — иначе зритель видит старые MMR в драфте
     toast(fresh.share.viewer ? 'Режим зрителя — сетка обновляется сама' : 'Ты судья — можешь редактировать', fresh.share.viewer ? '👁' : '✏️', true);
   } catch (e) { uiAlert('Нет связи с сервером синхронизации — проверь интернет.'); }
 }
