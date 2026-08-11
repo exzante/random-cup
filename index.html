@@ -627,6 +627,8 @@ canvas.confetti{position:fixed;inset:0;z-index:100;pointer-events:none}
 .dteam.over{--bl:rgba(255,92,92,.5)}
 .dteam-h{display:flex;align-items:center;gap:8px;margin-bottom:9px}
 .dteam-h b{font-family:var(--disp);font-size:14px;letter-spacing:.04em;color:var(--gold2)}
+.dteam-h .dtname{cursor:pointer;border-bottom:1px dashed transparent}
+.dteam-h .dtname:hover{border-bottom-color:var(--gold-deep)}
 .dteam-h .dmove{display:inline-flex;gap:1px}
 .dteam-h .dmove .mini{padding:2px 5px;font-size:11px;line-height:1}
 .dteam-h .dmove .mini:disabled{opacity:.28;cursor:default}
@@ -3611,10 +3613,11 @@ function screenCreate() {
       <div class="modetog">
         <button type="button" class="btn sm ${createMode === 'solo' ? 'primary' : 'ghost'}" data-action="cmode" data-mode="solo">👤 Соло</button>
         <button type="button" class="btn sm ${createMode === 'teams' ? 'primary' : 'ghost'}" data-action="cmode" data-mode="teams">👥 Команды</button>
-        <button type="button" class="btn sm ${createMode === 'draft' ? 'primary' : 'ghost'}" data-action="cmode" data-mode="draft">🎖 Капитанский драфт</button>
+        <button type="button" class="btn sm ${createMode === 'draft' ? 'primary' : 'ghost'}" data-action="cmode" data-mode="draft">🎖 Собрать команды</button>
       </div>
       <div id="draftTools" class="drafttools ${createMode === 'draft' ? '' : 'hidden'}">
-        <b>Драфт:</b> турнир создастся пустым. Пул игроков соберётся из тех, кому на странице <b>«Игроки»</b> поставишь метку <b>«✅ идёт»</b>. Капитанов и команды соберёшь уже на странице турнира.
+        <b>Сбор команд:</b> турнир создастся пустым, команды соберёшь уже на его странице. Там: <b>«＋ Команда»</b> — добавить готовый стак и набрать игроков из базы (лимит по MMR учитывается); либо <b>«★ Кэп»</b> из пула «идущих» — для капитанского драфта.
+        <label class="chk" style="margin-top:9px;display:inline-flex" data-tip="Суммарный MMR команды не должен превышать лимит. Пусто — без лимита.">Лимит MMR команды:&nbsp;<input id="cCapDraft" type="number" inputmode="numeric" placeholder="напр. 25000" style="width:130px"></label>
       </div>
       <div id="partBody" class="${createMode === 'draft' ? 'hidden' : ''}">
         <div id="soloTools" class="${createMode === 'teams' ? 'hidden' : ''}">
@@ -3799,9 +3802,9 @@ function draftTeamCard(t, tm, cap, admin, idx = 0, n = 1) {
     return `<span class="dmem ${isCap ? 'cap' : ''}">${isCap ? '★' : ''}${avatarByName(nm)}<span class="dmn">${esc(nm)}</span><small>${p && p.mmr != null ? p.mmr : ''}</small>${admin ? `<button class="mini del" data-action="draftremmem" data-tid="${tm.id}" data-pid="${id}" data-tip="${isCap ? 'Убрать всю команду' : 'Вернуть в пул'}">✕</button>` : ''}</span>`;
   }).join('');
   return `<div class="dteam cut ${over ? 'over' : ''}">
-    <div class="dteam-h"><b>${esc(tm.name)}</b><span class="dteam-mmr">${sum}${cap > 0 ? ` / ${cap}` : ''}${cap > 0 ? (over ? ` <span class="cbad">−${sum - cap}</span>` : ` <span class="crem">+${rem}</span>`) : ''}</span>${admin ? `<span class="dmove"><button class="mini" data-action="draftmove" data-tid="${tm.id}" data-dir="-1" ${idx === 0 ? 'disabled' : ''} data-tip="Сдвинуть влево">◀</button><button class="mini" data-action="draftmove" data-tid="${tm.id}" data-dir="1" ${idx >= n - 1 ? 'disabled' : ''} data-tip="Сдвинуть вправо">▶</button></span><button class="mini del" data-action="draftremteam" data-tid="${tm.id}" data-tip="Удалить команду">✕</button>` : ''}</div>
-    <div class="dteam-list">${members || '<span class="note">пусто</span>'}</div>
-    ${admin ? `<button class="mini dadd" data-action="draftadd" data-tid="${tm.id}" data-tip="Добавить игрока из пула">＋ игрок</button>` : ''}
+    <div class="dteam-h"><b class="dtname" ${admin ? `data-action="draftrename" data-tid="${tm.id}" data-tip="Переименовать команду"` : ''}>${esc(tm.name)}</b><span class="dteam-mmr">${sum}${cap > 0 ? ` / ${cap}` : ''}${cap > 0 ? (over ? ` <span class="cbad">−${sum - cap}</span>` : ` <span class="crem">+${rem}</span>`) : ''}</span>${admin ? `<span class="dmove"><button class="mini" data-action="draftmove" data-tid="${tm.id}" data-dir="-1" ${idx === 0 ? 'disabled' : ''} data-tip="Сдвинуть влево">◀</button><button class="mini" data-action="draftmove" data-tid="${tm.id}" data-dir="1" ${idx >= n - 1 ? 'disabled' : ''} data-tip="Сдвинуть вправо">▶</button></span><button class="mini del" data-action="draftremteam" data-tid="${tm.id}" data-tip="Удалить команду">✕</button>` : ''}</div>
+    <div class="dteam-list">${members || '<span class="note">пусто — жми «＋ игрок»</span>'}</div>
+    ${admin ? `<button class="mini dadd" data-action="draftadd" data-tid="${tm.id}" data-tip="Добавить игрока из базы">＋ игрок</button>` : ''}
   </div>`;
 }
 // Тир игрока по MMR: 2 тир 6500+, 3 тир 5000–6500, 4 тир ниже. (1 тир — капитаны, они уже вне пула.)
@@ -3831,9 +3834,10 @@ function draftHtml(t) {
   const ready = t.draftTeams.filter(x => x.members.length).length;
   return `<div class="draftwrap">
     <div class="pophdr cut">
-      <span class="tl">🎖 Драфт</span>
-      <span class="note">Пул — игроки с меткой «идёт». Ставь капитанов и раздавай игроков по командам.</span>
+      <span class="tl">🎖 Сбор команд</span>
+      <span class="note">Жми <b>«＋ Команда»</b> и набирай игроков из базы (лимит по MMR учитывается). Либо <b>«★ Кэп»</b> у игрока из пула — для капитанского драфта.</span>
       <span style="flex:1"></span>
+      ${admin ? `<button class="btn ghost sm" data-action="draftaddteam" data-tip="Добавить готовую команду (стак)">＋ Команда</button>` : ''}
       ${admin ? `<button class="btn primary sm" data-action="draftform" ${ready < 2 ? 'disabled' : ''} data-tip="Собрать сетку/группы из команд">Сформировать сетку →</button>` : ''}
     </div>
     <div class="draftgrid">
@@ -3843,7 +3847,7 @@ function draftHtml(t) {
       </div>
       <div class="draftteamswrap">
         <div class="draftcol-h">Команды <span>${t.draftTeams.length}</span></div>
-        <div class="draftteams">${t.draftTeams.length ? t.draftTeams.map((tm, i) => draftTeamCard(t, tm, cap, admin, i, t.draftTeams.length)).join('') : `<div class="note" style="padding:12px">Команд нет. Нажми <b>«★ Кэп»</b> у игрока в пуле, чтобы сделать его капитаном.</div>`}</div>
+        <div class="draftteams">${t.draftTeams.length ? t.draftTeams.map((tm, i) => draftTeamCard(t, tm, cap, admin, i, t.draftTeams.length)).join('') : `<div class="note" style="padding:12px">Команд нет. Жми <b>«＋ Команда»</b> сверху — добавь готовый стак и набери игроков. Или <b>«★ Кэп»</b> у игрока в пуле.</div>`}</div>
       </div>
     </div>
   </div>`;
@@ -3855,7 +3859,7 @@ function draftAddModal(t, tid) {
     <div class="mtitle">В команду «${esc(tm.name)}»</div>
     <div class="mbody" style="text-align:left">
       <div class="note" id="daSum" style="margin-bottom:8px"></div>
-      <input id="daSearch" placeholder="🔎 Поиск по пулу…" autocomplete="off">
+      <input id="daSearch" placeholder="🔎 Поиск по базе — имя или ник…" autocomplete="off">
       <div id="daList" class="laList"></div>
     </div>
     <div class="mrow"><span style="flex:1"></span><button class="btn ghost" id="daClose">Готово</button></div>`, true);
@@ -3868,15 +3872,15 @@ function draftAddModal(t, tid) {
     const rem = cap > 0 ? cap - sum : Infinity;
     ov.querySelector('#daSum').innerHTML = `Сумма <b>${sum}</b>${cap > 0 ? ` · осталось <b>${rem}</b> до ${cap}` : ''}`;
     q = (q || '').trim().toLowerCase();
-    let players = DB.players.filter(p => p.going && !assigned.has(p.id));
+    let players = DB.players.filter(p => !assigned.has(p.id));
     if (cap > 0) players = players.filter(p => (p.mmr || 0) <= rem);
     if (q) players = players.filter(p => (p.name + ' ' + (p.nick || '')).toLowerCase().includes(q));
-    players.sort((a, b) => (b.mmr || 0) - (a.mmr || 0));
+    players.sort((a, b) => (b.going ? 1 : 0) - (a.going ? 1 : 0) || (b.mmr || 0) - (a.mmr || 0));
     box.innerHTML = players.length
       ? players.map(p => `<button type="button" class="regpickitem daItem" data-pid="${p.id}">
-          ${avatarByName(p.nick || p.name)}<span class="rpn">${esc(p.nick || p.name)}</span>${posArr(p).length ? `<span class="rpp">${posArr(p).join('/')}</span>` : ''}<span class="rpm">${p.mmr != null ? p.mmr : '—'}</span>
+          ${avatarByName(p.nick || p.name)}<span class="rpn">${esc(p.nick || p.name)}${p.going ? ' <i style="color:var(--green)">идёт</i>' : ''}</span>${posArr(p).length ? `<span class="rpp">${posArr(p).join('/')}</span>` : ''}<span class="rpm">${p.mmr != null ? p.mmr : '—'}</span>
         </button>`).join('')
-      : `<div class="note" style="padding:10px">${cap > 0 ? `Никто не влезает в остаток (${rem}) или пул пуст.` : 'Пул пуст.'}</div>`;
+      : `<div class="note" style="padding:10px">${cap > 0 ? `Никто не влезает в остаток (${rem}).` : 'В базе никого не найдено.'}</div>`;
     box.querySelectorAll('.daItem').forEach(btn => btn.onclick = () => {
       const cur = curT(); const c = (cur.draftTeams || []).find(x => x.id === tid);
       if (c && !c.members.includes(btn.dataset.pid)) { c.members.push(btn.dataset.pid); save(); }
@@ -4184,7 +4188,7 @@ function drawEdges() {
 window.addEventListener('resize', () => requestAnimationFrame(drawEdges));
 
 /* ================= events ================= */
-const MUT_ACTIONS = new Set(['win', 'score', 'draw', 'undo', 'rename', 'pdel', 'fill', 'gadd', 'gdel', 'makepo', 'resetpo', 'reseed', 'addp', 'trename', 'raddgo', 'rdel', 'editinfo', 'draftcap', 'draftadd', 'draftremmem', 'draftremteam', 'draftmove', 'draftform']);
+const MUT_ACTIONS = new Set(['win', 'score', 'draw', 'undo', 'rename', 'pdel', 'fill', 'gadd', 'gdel', 'makepo', 'resetpo', 'reseed', 'addp', 'trename', 'raddgo', 'rdel', 'editinfo', 'draftcap', 'draftaddteam', 'draftrename', 'draftadd', 'draftremmem', 'draftremteam', 'draftmove', 'draftform']);
 document.addEventListener('click', async e => {
   const el = e.target.closest('[data-action]');
   if (!el || el.disabled) return;
@@ -4209,6 +4213,18 @@ document.addEventListener('click', async e => {
     t.draftTeams = t.draftTeams || [];
     t.draftTeams.push({ id: uid(), captainId: p.id, name: p.nick || p.name, members: [p.id] });
     save(); render();
+  }
+  else if (a === 'draftaddteam') {
+    if (!t || !isAdmin()) return;
+    t.draftTeams = t.draftTeams || [];
+    t.draftTeams.push({ id: uid(), captainId: null, name: 'Команда ' + (t.draftTeams.length + 1), members: [] });
+    save(); render();
+  }
+  else if (a === 'draftrename') {
+    if (!t || !isAdmin()) return;
+    const tm = (t.draftTeams || []).find(x => x.id === el.dataset.tid); if (!tm) return;
+    const nn = await uiPrompt('Название команды', tm.name);
+    if (nn) { tm.name = nn; save(); render(); }
   }
   else if (a === 'draftadd') { if (t && isAdmin()) draftAddModal(t, el.dataset.tid); }
   else if (a === 'draftremmem') {
@@ -4775,7 +4791,8 @@ document.addEventListener('submit', async e => {
   e.preventDefault();
   const name = document.getElementById('cName').value.trim() || 'Турнир';
   const fmt = document.querySelector('input[name=fmt]:checked').value;
-  const cap = parseInt((document.getElementById('cCap').value || '').trim(), 10) || 0;
+  const capEl = createMode === 'draft' ? document.getElementById('cCapDraft') : document.getElementById('cCap');
+  const cap = parseInt(((capEl && capEl.value) || '').trim(), 10) || 0;
   const opts = {
     thirdPlace: document.getElementById('cThird').checked,
     groupCount: +document.getElementById('cGroups').value,
