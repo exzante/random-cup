@@ -589,7 +589,9 @@ canvas.confetti{position:fixed;inset:0;z-index:100;pointer-events:none}
 .joinrow .jr-n{font-weight:700;font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .joinrow .jr-real{font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .joinrow .jr-mmr{flex:none;font-family:var(--disp);font-weight:700;font-size:14px;color:var(--gold2);font-variant-numeric:tabular-nums}
-.joinrow .jr-go{flex:none;min-width:76px}
+.joinrow .jr-btns{flex:none;display:flex;flex-direction:column;gap:5px}
+.joinrow .jr-btns .btn{min-width:132px;white-space:nowrap;justify-content:center}
+.joinrow.lft{--bl:linear-gradient(135deg,var(--gold2),var(--gold-deep));background:linear-gradient(90deg,var(--gold-soft),transparent)}
 .joinfoot{text-align:center;padding:4px 10px 0}
 /* капитанский драфт */
 .drafttools{font-size:12.5px;color:var(--muted);background:var(--panel2);border:1px solid var(--line);padding:9px 13px;margin-bottom:8px;line-height:1.55}
@@ -3008,12 +3010,12 @@ let regMmrMin = 0;          // фильтр по рейтингу
 let regGoing = false;       // показывать только «идут на турик»
 let joinMode = false;       // режим самостоятельной отметки по ссылке (?join=1)
 // Самостоятельная отметка «иду» игроком из базы (без пароля). Открытый чек-ин.
-async function selfGoing(pid) {
+async function selfGoing(pid, lft) {
   try {
     await loadSB();
-    const { error } = await sb.rpc('rc_self_going', { p_id: pid });
+    const { error } = await sb.rpc('rc_self_going_lft', { p_id: pid, p_lft: !!lft });
     if (error) throw error;
-    const p = regById(pid); if (p) { p.going = true; p.goingAt = Date.now(); }
+    const p = regById(pid); if (p) { p.going = true; p.lft = !!lft; p.goingAt = Date.now(); }
     return true;
   } catch (e) { uiAlert('Не получилось отметиться — проверь интернет.'); return false; }
 }
@@ -3022,7 +3024,7 @@ async function selfLeave(pid) {
     await loadSB();
     const { error } = await sb.rpc('rc_self_leave', { p_id: pid });
     if (error) throw error;
-    const p = regById(pid); if (p) p.going = false;
+    const p = regById(pid); if (p) { p.going = false; p.lft = false; }
     return true;
   } catch (e) { uiAlert('Не получилось снять отметку — проверь интернет.'); return false; }
 }
@@ -3065,7 +3067,7 @@ function screenJoin() {
       <div class="jh-logo">RC</div>
       <div class="jh-txt">
         <div class="jh-t">Отметься на ближайший сбор</div>
-        <div class="jh-s">Найди себя в списке и жми <b>«я иду»</b>. Уже идёт: <b>${going}</b></div>
+        <div class="jh-s">Найди себя → жми <b>«я иду»</b>. Нет команды — жми <b>«ищу команду»</b>. Уже идёт: <b>${going}</b></div>
       </div>
     </div>
     <div class="joinwarn">⚠️ Отмечайся <b>только за себя</b>. Список — наша база игроков, организаторы знают каждого. Кто отметит не себя — уберут.</div>
@@ -3075,11 +3077,16 @@ function screenJoin() {
   </div>`;
 }
 function joinRow(p) {
-  return `<div class="joinrow cut ${p.going ? 'go' : ''}" data-search="${esc((p.name + ' ' + (p.nick || '')).toLowerCase())}">
+  const goActive = p.going && !p.lft;   // иду (с командой)
+  const lftActive = p.going && p.lft;   // иду + ищу команду
+  return `<div class="joinrow cut ${p.going ? 'go' : ''} ${lftActive ? 'lft' : ''}" data-search="${esc((p.name + ' ' + (p.nick || '')).toLowerCase())}">
     ${avatarByName(p.nick || p.name)}
     <div class="jr-col"><span class="jr-n">${esc(p.nick || p.name)}</span>${p.nick && p.name.toLowerCase() !== p.nick.toLowerCase() ? `<span class="jr-real">${esc(p.name)}</span>` : ''}</div>
     ${p.mmr != null ? `<span class="jr-mmr">${p.mmr}</span>` : ''}
-    <button class="btn sm ${p.going ? 'primary' : 'ghost'} jr-go" data-action="joingo" data-pid="${p.id}">${p.going ? '✓ иду' : 'я иду'}</button>
+    <div class="jr-btns">
+      <button class="btn sm ${goActive ? 'primary' : 'ghost'} jr-go" data-action="joingo" data-pid="${p.id}" data-lft="0">${goActive ? '✓ иду' : 'я иду'}</button>
+      <button class="btn sm ${lftActive ? 'primary' : 'ghost'} jr-lft" data-action="joingo" data-pid="${p.id}" data-lft="1">${lftActive ? '✓ ищу' : '🔎 ищу команду'}</button>
+    </div>
   </div>`;
 }
 function screenPlayers() {
@@ -4315,9 +4322,11 @@ document.addEventListener('click', async e => {
   else if (a === 'goingtoggle') { if (isAdmin()) { const p = regById(el.dataset.pid); if (p) goingSet(p.id, !p.going); } }
   else if (a === 'joingo') {
     const p = regById(el.dataset.pid); if (!p) return;
-    const wasGoing = p.going;
-    const ok = wasGoing ? await selfLeave(p.id) : await selfGoing(p.id);
-    if (ok) { render(); toast(wasGoing ? 'Отметка снята' : 'Готово — ты в списке! 🔥', wasGoing ? '' : '✅', true); }
+    const wantLft = el.dataset.lft === '1';
+    // Жмём активную кнопку — снимаем; иначе ставим нужный режим (иду / иду+ищу).
+    const isActive = p.going && (wantLft === !!p.lft);
+    const ok = isActive ? await selfLeave(p.id) : await selfGoing(p.id, wantLft);
+    if (ok) { render(); toast(isActive ? 'Отметка снята' : (wantLft ? 'Ты в списке — ищешь команду 🔎' : 'Готово — ты идёшь! 🔥'), '', true); }
   }
   else if (a === 'joinlink') {
     const link = joinLink();
