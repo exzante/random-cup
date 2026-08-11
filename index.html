@@ -1985,6 +1985,11 @@ async function tourCloudLoad() {
       const local = DB.tournaments.find(t => t.id === c.id);
       if (!local) { DB.tournaments.push(c); added++; changed = true; }
       else if ((row.updated_at || 0) > (local.updatedAt || 0)) {
+        // Защита от рассинхрона часов между устройствами: не затираем локальный
+        // драфт, где команд собрано БОЛЬШЕ, чем в облачной (возможно устаревшей) копии.
+        const localDT = local.phase === 'draft' ? (local.draftTeams || []).length : -1;
+        const cloudDT = c.phase === 'draft' ? (c.draftTeams || []).length : -1;
+        if (localDT > cloudDT) return;
         DB.tournaments[DB.tournaments.indexOf(local)] = c; changed = true;
       }
     });
