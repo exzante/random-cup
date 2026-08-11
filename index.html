@@ -2199,7 +2199,7 @@ function drawExportHeader(ctx, t, W, pad) {
   ctx.textAlign = 'left';
   return champ;
 }
-function exportImage(t) {
+function exportImage(t, deliver) {
   const secs = [...document.querySelectorAll('.bsec')];
   if (!secs.length) { uiAlert('Сетки на экране нет — нечего экспортировать.'); return; }
   const z = zoomLvl || 1, SC = 1.6, pad = 44, headH = 92, secTitleH = 38, secGap = 40;
@@ -2247,7 +2247,7 @@ function exportImage(t) {
     oy += d.H + secGap;
   }
   const fname = (t.name.replace(/[\\/:*?"<>|]/g, '').trim() || 'bracket') + '.png';
-  deliverImage(cv, fname, t, 'Картинка сетки');
+  (deliver || deliverImage)(cv, fname, t, 'Картинка сетки');
 }
 function drawSectionPNG(ctx, t, d, ox, oy, champ) {
   const byId = {};
@@ -2339,7 +2339,7 @@ function groupRoundsData(t, g) {
   });
 }
 /* Экспорт группового этапа картинкой: таблица + расписание туров (кто с кем и кто отдыхает). */
-function exportGroupsImage(t) {
+function exportGroupsImage(t, deliver) {
   const groups = (t.groups || []).filter(g => g.pids.length);
   if (!groups.length) { uiAlert('Групп на экране нет — нечего экспортировать.'); return; }
   const draws = drawsOn(t), adv = t.opts.advance || 2;
@@ -2377,7 +2377,31 @@ function exportGroupsImage(t) {
     oy += band.contentH + bandGap;
   }
   const fname = (t.name.replace(/[\\/:*?"<>|]/g, '').trim() || 'group') + '-группа.png';
-  deliverImage(cv, fname, t, 'Картинка группы');
+  (deliver || deliverImage)(cv, fname, t, 'Картинка группы');
+}
+// Настроить/убрать Discord-вебхук (ссылка канала). Хранится локально на устройстве организатора.
+async function discordHookSetup() {
+  const cur = localStorage.getItem('rc_dhook') || '';
+  const url = await uiPrompt('Discord-вебхук (ссылка)', cur, 'https://discord.com/api/webhooks/...');
+  if (url === null) return;
+  const v = url.trim();
+  if (v && !/discord(app)?\.com\/api\/webhooks\//i.test(v)) { uiAlert('Это не похоже на ссылку вебхука Discord. Настройки канала → Интеграции → Вебхуки → Копировать URL.'); return; }
+  if (v) { localStorage.setItem('rc_dhook', v); toast('Discord-вебхук сохранён', '🔗', true); }
+  else { localStorage.removeItem('rc_dhook'); toast('Вебхук убран', '🔗'); }
+}
+// Доставка картинки в Discord через вебхук (картинка файлом + текст со ссылкой).
+function discordDeliver(cv, fname, t) {
+  const url = localStorage.getItem('rc_dhook');
+  if (!url) { discordHookSetup(); return; }
+  const blob = canvasToBlob(cv), link = viewerLink(t), champ = podium(t).first;
+  const content = `**${t.name}**${champ ? ` — 🏆 ${pname(t, champ)}` : ''}\n${link}`;
+  const fd = new FormData();
+  fd.append('payload_json', JSON.stringify({ content, username: 'Random Cup', allowed_mentions: { parse: [] } }));
+  fd.append('files[0]', blob, fname);
+  toast('Отправляю в Discord…', '📢');
+  fetch(url + (url.includes('?') ? '&' : '?') + 'wait=true', { method: 'POST', body: fd })
+    .then(r => { if (!r.ok) throw new Error('http ' + r.status); toast('Отправлено в Discord', '📢', true); })
+    .catch(() => uiAlert('Не отправилось в Discord — проверь вебхук-ссылку (⋯ → Discord-вебхук).'));
 }
 function drawStandingsPNG(ctx, t, band, x, y, w, rowH, headH, adv, draws) {
   const st = band.st, cols = draws ? ['В', 'Н', 'П', '±', 'О'] : ['В', 'П', '±'], cw = 34;
@@ -2849,9 +2873,11 @@ function tbMenuHtml() {
     if (canEdit(curT())) items.push(`<button data-action="chgfmt">🔄 Сменить формат</button>`);
     if (canEdit(curT()) && curT().thirdId) items.push(`<button data-action="rmthird">🥉 Убрать матч за 3-е</button>`);
     items.push(`<button data-action="shot">📲 Поделиться картинкой</button>`);
+    if (canEdit(curT())) items.push(`<button data-action="shotdiscord">📢 Отправить в Discord</button>`);
     items.push(`<button data-action="tv">📺 Режим проектора</button>`);
   }
   items.push(`<button data-action="mute">${soundOn ? '🔊 Звук: включён' : '🔇 Звук: выключен'}</button>`);
+  items.push(`<button data-action="dhook">🔗 Discord-вебхук</button>`);
   items.push(`<button data-action="help">❔ Как пользоваться</button>`);
   return `<div class="tbmenu">
     <button class="btn sm icon ghost" data-action="tbmenu" data-tip="Ещё">⋯</button>
@@ -4299,6 +4325,14 @@ document.addEventListener('click', async e => {
     if (document.querySelector('.bsec')) exportImage(t);
     else if (t.groups && t.groups.length) exportGroupsImage(t);
     else exportImage(t);
+  }
+  else if (a === 'dhook') { discordHookSetup(); }
+  else if (a === 'shotdiscord') {
+    if (!t) return;
+    if (!localStorage.getItem('rc_dhook')) { discordHookSetup(); return; }
+    if (document.querySelector('.bsec')) exportImage(t, discordDeliver);
+    else if (t.groups && t.groups.length) exportGroupsImage(t, discordDeliver);
+    else exportImage(t, discordDeliver);
   }
   else if (a === 'timer') { timerOpen = !timerOpen; renderTimerW(); renderTopbar(); }
   else if (a === 'tstart') {
