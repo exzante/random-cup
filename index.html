@@ -582,17 +582,27 @@ canvas.confetti{position:fixed;inset:0;z-index:100;pointer-events:none}
 .joinhead .jh-s{font-size:13px;color:var(--muted);margin-top:3px}
 .joinwarn{font-size:12.5px;line-height:1.5;color:var(--muted);background:var(--gold-soft);border:1px solid var(--gold-deep);padding:9px 13px}
 .joinwarn b{color:var(--gold2)}
-.joinlist{display:flex;flex-direction:column;gap:7px}
-.joinrow{display:flex;align-items:center;gap:11px;padding:9px 13px;--c:10px;--bl:var(--line)}
-.joinrow.go{--bl:linear-gradient(135deg,var(--green),var(--gold-deep));background:linear-gradient(90deg,rgba(61,220,151,.07),transparent)}
-.joinrow .jr-col{flex:1;min-width:0;display:flex;flex-direction:column}
-.joinrow .jr-n{font-weight:700;font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.joinrow .jr-real{font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.joinrow .jr-mmr{flex:none;font-family:var(--disp);font-weight:700;font-size:14px;color:var(--gold2);font-variant-numeric:tabular-nums}
-.joinrow .jr-btns{flex:none;display:flex;flex-direction:column;gap:5px}
-.joinrow .jr-btns .btn{min-width:132px;white-space:nowrap;justify-content:center}
-.joinrow.lft{--bl:linear-gradient(135deg,var(--gold2),var(--gold-deep));background:linear-gradient(90deg,var(--gold-soft),transparent)}
-.joinfoot{text-align:center;padding:4px 10px 0}
+.joinlist{display:flex;flex-direction:column;gap:9px}
+.joinrow{display:flex;flex-direction:column;gap:11px;padding:13px 14px;--c:13px;--bl:var(--line);transition:border-color .15s,background .15s}
+.joinrow.go{--bl:linear-gradient(135deg,var(--green),var(--gold-deep) 80%);background:linear-gradient(180deg,rgba(61,220,151,.06),transparent 60%)}
+.joinrow.lft{--bl:linear-gradient(135deg,var(--gold2),var(--gold-deep) 80%);background:linear-gradient(180deg,var(--gold-soft),transparent 60%)}
+.joinrow .jr-top{display:flex;align-items:center;gap:12px;min-width:0}
+.joinrow .av{width:40px;height:40px;font-size:15px;flex:none}
+.joinrow .jr-col{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px}
+.joinrow .jr-n{font-weight:800;font-size:16px;letter-spacing:.01em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.joinrow .jr-sub{font-size:11.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-variant-numeric:tabular-nums}
+.joinrow .jr-tag{flex:none;font-size:10.5px;font-weight:700;letter-spacing:.02em;padding:3px 9px;border-radius:20px;white-space:nowrap}
+.joinrow .jr-tag.go{color:var(--green);background:rgba(61,220,151,.12);border:1px solid rgba(61,220,151,.35)}
+.joinrow .jr-tag.lft{color:var(--gold2);background:var(--gold-soft);border:1px solid var(--gold-deep)}
+.joinrow .jr-btns{display:flex;gap:9px}
+.joinrow .jr-btn{flex:1;padding:11px 8px;font-size:13px;font-weight:800;letter-spacing:.02em;text-align:center;border:1px solid var(--line);background:var(--panel2);color:var(--muted);cursor:pointer;transition:all .12s;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.joinrow .jr-btn:active{transform:scale(.97)}
+.joinrow .jr-go:hover{border-color:var(--green);color:var(--text)}
+.joinrow .jr-lft:hover{border-color:var(--gold-deep);color:var(--text)}
+.joinrow .jr-go.on{background:linear-gradient(135deg,var(--green),#2ea672);border-color:transparent;color:#06130d;box-shadow:0 3px 12px rgba(61,220,151,.2)}
+.joinrow .jr-lft.on{background:linear-gradient(135deg,var(--gold2),var(--gold-deep));border-color:transparent;color:#161204;box-shadow:0 3px 12px rgba(212,175,55,.22)}
+.joinfoot{text-align:center;padding:6px 10px 0}
+@media (max-width:400px){.joinrow .jr-btn{font-size:12px;padding:11px 4px}}
 /* капитанский драфт */
 .drafttools{font-size:12.5px;color:var(--muted);background:var(--panel2);border:1px solid var(--line);padding:9px 13px;margin-bottom:8px;line-height:1.55}
 .drafttools b{color:var(--gold2)}
@@ -3079,13 +3089,16 @@ function screenJoin() {
 function joinRow(p) {
   const goActive = p.going && !p.lft;   // иду (с командой)
   const lftActive = p.going && p.lft;   // иду + ищу команду
+  const sub = [(p.nick && p.name.toLowerCase() !== p.nick.toLowerCase()) ? esc(p.name) : '', p.mmr != null ? p.mmr + ' MMR' : ''].filter(Boolean).join(' · ');
   return `<div class="joinrow cut ${p.going ? 'go' : ''} ${lftActive ? 'lft' : ''}" data-search="${esc((p.name + ' ' + (p.nick || '')).toLowerCase())}">
-    ${avatarByName(p.nick || p.name)}
-    <div class="jr-col"><span class="jr-n">${esc(p.nick || p.name)}</span>${p.nick && p.name.toLowerCase() !== p.nick.toLowerCase() ? `<span class="jr-real">${esc(p.name)}</span>` : ''}</div>
-    ${p.mmr != null ? `<span class="jr-mmr">${p.mmr}</span>` : ''}
+    <div class="jr-top">
+      ${avatarByName(p.nick || p.name)}
+      <div class="jr-col"><span class="jr-n">${esc(p.nick || p.name)}</span>${sub ? `<span class="jr-sub">${sub}</span>` : ''}</div>
+      ${p.going ? `<span class="jr-tag ${lftActive ? 'lft' : 'go'}">${lftActive ? '🔎 ищет команду' : '✓ идёт'}</span>` : ''}
+    </div>
     <div class="jr-btns">
-      <button class="btn sm ${goActive ? 'primary' : 'ghost'} jr-go" data-action="joingo" data-pid="${p.id}" data-lft="0">${goActive ? '✓ иду' : 'я иду'}</button>
-      <button class="btn sm ${lftActive ? 'primary' : 'ghost'} jr-lft" data-action="joingo" data-pid="${p.id}" data-lft="1">${lftActive ? '✓ ищу' : '🔎 ищу команду'}</button>
+      <button class="jr-btn jr-go ${goActive ? 'on' : ''}" data-action="joingo" data-pid="${p.id}" data-lft="0">${goActive ? '✓ я иду' : 'я иду'}</button>
+      <button class="jr-btn jr-lft ${lftActive ? 'on' : ''}" data-action="joingo" data-pid="${p.id}" data-lft="1">${lftActive ? '✓ ищу команду' : '🔎 ищу команду'}</button>
     </div>
   </div>`;
 }
