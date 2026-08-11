@@ -227,7 +227,7 @@ textarea{resize:vertical;line-height:1.8}
 .caprow .cn small{color:var(--dim);font-weight:400}
 .caprow .cmiss{font-size:10.5px;color:var(--muted);border:1px dashed var(--line2);padding:1px 7px}
 .caprow .mini{margin-left:auto;color:var(--gold2);font-size:11px;white-space:nowrap}
-b.over-t{color:var(--red)}
+.over-t{color:var(--red)}
 .chk{display:inline-flex;align-items:center;gap:9px;cursor:pointer;user-select:none;font-weight:500}
 .chk input[type=checkbox]{accent-color:var(--gold);width:17px;height:17px;cursor:pointer}
 .inline{display:flex;gap:20px;align-items:center;flex-wrap:wrap}
@@ -626,13 +626,13 @@ canvas.confetti{position:fixed;inset:0;z-index:100;pointer-events:none}
 .dteam{--c:12px;--bl:var(--line);padding:12px 13px;display:flex;flex-direction:column}
 .dteam.over{--bl:rgba(255,92,92,.5)}
 .dteam-h{display:flex;align-items:center;gap:8px;margin-bottom:9px}
-.dteam-h b{font-family:var(--disp);font-size:14px;letter-spacing:.04em;color:var(--gold2)}
+.dteam-h b{font-family:var(--disp);font-size:14px;letter-spacing:.04em;color:var(--gold2);flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .dteam-h .dtname{cursor:pointer;border-bottom:1px dashed transparent}
 .dteam-h .dtname:hover{border-bottom-color:var(--gold-deep)}
 .dteam-h .dmove{display:inline-flex;gap:1px}
 .dteam-h .dmove .mini{padding:2px 5px;font-size:11px;line-height:1}
 .dteam-h .dmove .mini:disabled{opacity:.28;cursor:default}
-.dteam-mmr{font-family:var(--disp);font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums;margin-left:auto}
+.dteam-mmr{font-family:var(--disp);font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums;flex:none;white-space:nowrap}
 .dteam-mmr .crem{color:var(--green)}
 .dteam-mmr .cbad{color:var(--red);font-weight:800}
 .dteam-list{display:flex;flex-direction:column;gap:5px;margin-bottom:8px}
@@ -3904,17 +3904,18 @@ function draftAddModal(t, tid) {
     const assigned = new Set(); t2.draftTeams.forEach(x => x.members.forEach(id => assigned.add(id)));
     const sum = tm2.members.reduce((a, id) => { const p = regById(id); return a + ((p && p.mmr) || 0); }, 0);
     const rem = cap > 0 ? cap - sum : Infinity;
-    ov.querySelector('#daSum').innerHTML = `Сумма <b>${sum}</b>${cap > 0 ? ` · осталось <b>${rem}</b> до ${cap}` : ''}`;
+    ov.querySelector('#daSum').innerHTML = `Сумма <b>${sum}</b>${cap > 0 ? ` · осталось <b class="${rem < 0 ? 'over-t' : ''}">${rem}</b> до ${cap}` : ''}`;
     q = (q || '').trim().toLowerCase();
+    // Лимит не запрещает — просто подсвечиваем тех, кто уводит в перебор (добавить всё равно можно).
     let players = DB.players.filter(p => !assigned.has(p.id));
-    if (cap > 0) players = players.filter(p => (p.mmr || 0) <= rem);
     if (q) players = players.filter(p => (p.name + ' ' + (p.nick || '')).toLowerCase().includes(q));
     players.sort((a, b) => (b.going ? 1 : 0) - (a.going ? 1 : 0) || (b.mmr || 0) - (a.mmr || 0));
     box.innerHTML = players.length
-      ? players.map(p => `<button type="button" class="regpickitem daItem" data-pid="${p.id}">
-          ${avatarByName(p.nick || p.name)}<span class="rpn">${esc(p.nick || p.name)}${p.going ? ' <i style="color:var(--green)">идёт</i>' : ''}</span>${posArr(p).length ? `<span class="rpp">${posArr(p).join('/')}</span>` : ''}<span class="rpm">${p.mmr != null ? p.mmr : '—'}</span>
-        </button>`).join('')
-      : `<div class="note" style="padding:10px">${cap > 0 ? `Никто не влезает в остаток (${rem}).` : 'В базе никого не найдено.'}</div>`;
+      ? players.map(p => { const over = cap > 0 && (p.mmr || 0) > rem;
+        return `<button type="button" class="regpickitem daItem" data-pid="${p.id}">
+          ${avatarByName(p.nick || p.name)}<span class="rpn">${esc(p.nick || p.name)}${p.going ? ' <i style="color:var(--green)">идёт</i>' : ''}</span>${posArr(p).length ? `<span class="rpp">${posArr(p).join('/')}</span>` : ''}<span class="rpm ${over ? 'over-t' : ''}">${p.mmr != null ? p.mmr : '—'}${over ? ' ⚠' : ''}</span>
+        </button>`; }).join('')
+      : `<div class="note" style="padding:10px">В базе никого не найдено.</div>`;
     box.querySelectorAll('.daItem').forEach(btn => btn.onclick = () => {
       const cur = curT(); const c = (cur.draftTeams || []).find(x => x.id === tid);
       if (c && !c.members.includes(btn.dataset.pid)) { c.members.push(btn.dataset.pid); save(); }
@@ -4739,14 +4740,14 @@ function teamFillModal(lineIdx) {
     ov.querySelector('#tfSum').innerHTML = `<b>${esc(en.name)}</b> ×${en.members.length} · сумма <b>${sum}</b>${cap > 0 ? ` · осталось <b class="${rem < 0 ? 'over-t' : ''}">${rem}</b> до ${cap}` : ''}`;
     q = (q || '').trim().toLowerCase();
     let players = DB.players.filter(p => !used.has((p.nick || '').toLowerCase()) && !used.has(p.name.toLowerCase()));
-    if (cap > 0) players = players.filter(p => (p.mmr || 0) <= rem);
     if (q) players = players.filter(p => (p.name + ' ' + (p.nick || '')).toLowerCase().includes(q));
     players = players.sort((a, b) => (b.mmr || 0) - (a.mmr || 0)).slice(0, 50);
     box.innerHTML = players.length
-      ? players.map(p => `<button type="button" class="regpickitem tfItem" data-name="${esc(p.nick || p.name)}">
-          ${avatarByName(p.nick || p.name)}<span class="rpn">${esc(p.name)}${p.nick ? ` <i>@${esc(p.nick)}</i>` : ''}</span>${posArr(p).length ? `<span class="rpp">${posArr(p).join('/')}</span>` : ''}<span class="rpm">${p.mmr != null ? p.mmr : '—'}</span>
-        </button>`).join('')
-      : `<div class="note" style="padding:10px">${cap > 0 ? `Никто не влезает в остаток (${rem}). Убери кого-то или подними лимит.` : 'Никого не найдено.'}</div>`;
+      ? players.map(p => { const over = cap > 0 && (p.mmr || 0) > rem;
+        return `<button type="button" class="regpickitem tfItem" data-name="${esc(p.nick || p.name)}">
+          ${avatarByName(p.nick || p.name)}<span class="rpn">${esc(p.name)}${p.nick ? ` <i>@${esc(p.nick)}</i>` : ''}</span>${posArr(p).length ? `<span class="rpp">${posArr(p).join('/')}</span>` : ''}<span class="rpm ${over ? 'over-t' : ''}">${p.mmr != null ? p.mmr : '—'}${over ? ' ⚠' : ''}</span>
+        </button>`; }).join('')
+      : `<div class="note" style="padding:10px">Никого не найдено.</div>`;
     box.querySelectorAll('.tfItem').forEach(btn => btn.onclick = () => {
       const c2 = ta.value.split('\n');
       const e3 = parseEntry((c2[lineIdx] || '').trim());
