@@ -537,6 +537,25 @@ canvas.confetti{position:fixed;inset:0;z-index:100;pointer-events:none}
 .ht-p:hover{border-color:var(--gold-deep);color:var(--text)}
 .ht-p.gold{color:var(--gold2);border-color:var(--gold-deep);background:var(--gold-soft)}
 .ht-mem{margin-top:5px;font-size:11px;color:var(--dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* цветные медали в рейтинге */
+.hmed{display:flex;gap:9px;flex:none;margin-left:auto}
+.hmed .m{display:inline-flex;align-items:center;gap:4px;width:34px;justify-content:flex-start;font-weight:800;font-size:13px;font-variant-numeric:tabular-nums}
+.hmed .m .dot{width:15px;height:15px;border-radius:50%;flex:none;box-shadow:inset 0 -2px 3px rgba(0,0,0,.35),0 0 0 1px rgba(0,0,0,.25)}
+.hmed .m.g{color:#F2DA8C}   .hmed .m.g .dot{background:radial-gradient(circle at 35% 30%,#FCEEB0,#D4AF37 70%)}
+.hmed .m.s{color:#CED5DD}   .hmed .m.s .dot{background:radial-gradient(circle at 35% 30%,#F1F4F7,#9AA3AD 70%)}
+.hmed .m.br{color:#E3A972}  .hmed .m.br .dot{background:radial-gradient(circle at 35% 30%,#F0BE8A,#B06A2C 70%)}
+.hmed .m.zero{opacity:.22}
+.hmedleg{display:flex;gap:16px;margin:-4px 0 12px;padding-bottom:10px;border-bottom:1px solid rgba(39,34,26,.55)}
+.hmedleg .m{display:inline-flex;align-items:center;gap:5px;font-size:10.5px;font-weight:600;letter-spacing:.02em}
+.hmedleg .m .dot{width:12px;height:12px;border-radius:50%}
+.hmedleg .m.g{color:#F2DA8C} .hmedleg .m.g .dot{background:radial-gradient(circle at 35% 30%,#FCEEB0,#D4AF37 70%)}
+.hmedleg .m.s{color:#CED5DD} .hmedleg .m.s .dot{background:radial-gradient(circle at 35% 30%,#F1F4F7,#9AA3AD 70%)}
+.hmedleg .m.br{color:#E3A972} .hmedleg .m.br .dot{background:radial-gradient(circle at 35% 30%,#F0BE8A,#B06A2C 70%)}
+.hofrow.r1{background:linear-gradient(90deg,rgba(212,175,55,.14),transparent 55%)}
+.hofrow.r2{background:linear-gradient(90deg,rgba(200,207,214,.10),transparent 55%)}
+.hofrow.r3{background:linear-gradient(90deg,rgba(224,165,106,.10),transparent 55%)}
+.hofrow.r1 .hofn{color:#F2DA8C} .hofrow.r2 .hofn{color:#CED5DD} .hofrow.r3 .hofn{color:#E3A972}
+.hofrow.r1 .hofname,.hofrow.r2 .hofname,.hofrow.r3 .hofname{font-weight:800}
 @media (max-width:760px){.hofcols{grid-template-columns:1fr}.hofwrap{margin-top:12px}}
 
 /* ================= roster (живой состав) ================= */
@@ -1002,9 +1021,14 @@ function screenHof() {
       </div>
       <div class="hofsec cut">
         <div class="hofsec-h">👑 Рейтинг по медалям</div>
-        ${ranking.length ? ranking.map((r, i) => `<div class="hofrow" data-action="pstats" data-name="${esc(r.name)}" data-tip="Статистика игрока">
+        <div class="hmedleg"><span class="m g"><span class="dot"></span>1 место</span><span class="m s"><span class="dot"></span>2 место</span><span class="m br"><span class="dot"></span>3 место</span></div>
+        ${ranking.length ? ranking.map((r, i) => `<div class="hofrow ${i < 3 ? 'r' + (i + 1) : ''}" data-action="pstats" data-name="${esc(r.name)}" data-tip="Статистика игрока">
           <span class="hofn">${i + 1}</span>${avatarByName(r.name)}<span class="hofname">${esc(r.name)}</span>
-          <span class="hofmed">${r.g ? `🥇×${r.g}` : ''} ${r.s ? `🥈×${r.s}` : ''} ${r.b ? `🥉×${r.b}` : ''}</span>
+          <span class="hmed">
+            <span class="m g ${r.g ? '' : 'zero'}"><span class="dot"></span>${r.g || 0}</span>
+            <span class="m s ${r.s ? '' : 'zero'}"><span class="dot"></span>${r.s || 0}</span>
+            <span class="m br ${r.b ? '' : 'zero'}"><span class="dot"></span>${r.b || 0}</span>
+          </span>
         </div>`).join('') : '<div class="note" style="padding:14px">Пока нет медалей.</div>'}
       </div>
     </div>
@@ -3651,11 +3675,15 @@ function screenHome() {
   const hof = hallOfFame();
   const hofHtml = `<div class="hof cut">
       <div class="hofhead">🏛 Зал славы<span style="flex:1"></span><button class="btn sm ghost" data-action="hofpage" data-tip="Полный зал славы — кто где когда">${hof.length ? 'Весь зал →' : 'Открыть →'}</button></div>
-      ${hof.length ? hof.map((r, i) => `<div class="hofrow" data-action="pstats" data-name="${esc(r.name)}" data-tip="Статистика игрока">
+      ${hof.length ? hof.map((r, i) => `<div class="hofrow ${i < 3 ? 'r' + (i + 1) : ''}" data-action="pstats" data-name="${esc(r.name)}" data-tip="Статистика игрока">
         <span class="hofn">${i + 1}</span>
         ${avatarByName(r.name)}
         <span class="hofname">${esc(r.name)}</span>
-        <span class="hofmed">${r.g ? `🥇×${r.g}` : ''} ${r.s ? `🥈×${r.s}` : ''} ${r.b ? `🥉×${r.b}` : ''}</span>
+        <span class="hmed">
+          <span class="m g ${r.g ? '' : 'zero'}"><span class="dot"></span>${r.g || 0}</span>
+          <span class="m s ${r.s ? '' : 'zero'}"><span class="dot"></span>${r.s || 0}</span>
+          <span class="m br ${r.b ? '' : 'zero'}"><span class="dot"></span>${r.b || 0}</span>
+        </span>
       </div>`).join('') : '<div class="note" style="padding:6px 2px">Пока пусто — сыграйте турнир, и чемпионы появятся тут.</div>'}
     </div>`;
   return `<div class="hero">
