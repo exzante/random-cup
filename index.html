@@ -2053,7 +2053,7 @@ function applyRemote(code, data) {
   applyingRemote = false;
   if (view.screen === 'tour' ? view.tid === fresh.id : view.screen === 'home') render();
   // Драфт показывает MMR из базы — подтянем свежую, чтобы зритель видел актуальные рейтинги.
-  if (fresh.phase === 'draft' && view.screen === 'tour' && view.tid === fresh.id) regLoad();
+  if (fresh.phase === 'draft' && view.screen === 'tour' && view.tid === fresh.id) { regLoad(); signupsLoad().then(() => { if (view.screen === 'tour' && curT() && curT().phase === 'draft') render(); }); }
 }
 async function shareFlow(t) {
   if (!t.share) {
@@ -2132,6 +2132,7 @@ async function initLiveFromURL() {
     ensureLive(fresh);
     render();
     regLoad();   // свежая база игроков — иначе зритель видит старые MMR в драфте
+    if (fresh.phase === 'draft') signupsLoad().then(() => { if (view.screen === 'tour' && curT() && curT().phase === 'draft') render(); });
     toast(fresh.share.viewer ? 'Режим зрителя — сетка обновляется сама' : 'Ты судья — можешь редактировать', fresh.share.viewer ? '👁' : '✏️', true);
   } catch (e) { uiAlert('Нет связи с сервером синхронизации — проверь интернет.'); }
 }
@@ -3053,30 +3054,35 @@ function regTitles(pid) {
 let regView = 'pos';        // по позициям по умолчанию (список — по кнопке)
 let regPosFilter = 'all';   // all | one | flex
 let regMmrMin = 0;          // фильтр по рейтингу
-let regGoing = false;       // показывать только «идут на турик»
-let joinMode = false;       // режим самостоятельной отметки по ссылке (?join=1)
-// Самостоятельная отметка «иду» игроком из базы (без пароля). Открытый чек-ин.
-async function selfGoing(pid, lft) {
+let joinTid = null;         // на какой турнир идёт отметка (?join=<id>)
+let joinTourName = '';      // название турнира на странице отметки
+let SIGNUPS = {};           // { tid: { pid: {going, lft, at} } } — записи по турнирам из облака
+function signupsFor(tid) { return SIGNUPS[tid] || {}; }
+async function signupsLoad() {
   try {
     await loadSB();
-    const { error } = await sb.rpc('rc_self_going_lft', { p_id: pid, p_lft: !!lft });
+    const { data, error } = await sb.from('signups').select('tournament,player_id,going,lft,at');
     if (error) throw error;
-    const p = regById(pid); if (p) { p.going = true; p.lft = !!lft; p.goingAt = Date.now(); }
+    const s = {};
+    (data || []).forEach(r => { (s[r.tournament] = s[r.tournament] || {})[r.player_id] = { going: !!r.going, lft: !!r.lft, at: r.at ? Date.parse(r.at) : 0 }; });
+    SIGNUPS = s;
+    return true;
+  } catch (e) { return false; }
+}
+// Самостоятельная запись игрока на КОНКРЕТНЫЙ турнир (без пароля).
+async function selfSignup(tid, pid, going, lft) {
+  try {
+    await loadSB();
+    const { error } = await sb.rpc('rc_signup', { p_tournament: tid, p_id: pid, p_going: !!going, p_lft: !!lft });
+    if (error) throw error;
+    if (going || lft) (SIGNUPS[tid] = SIGNUPS[tid] || {})[pid] = { going: !!going, lft: !!lft, at: Date.now() };
+    else if (SIGNUPS[tid]) delete SIGNUPS[tid][pid];
     return true;
   } catch (e) { uiAlert('Не получилось отметиться — проверь интернет.'); return false; }
 }
-async function selfLeave(pid) {
-  try {
-    await loadSB();
-    const { error } = await sb.rpc('rc_self_leave', { p_id: pid });
-    if (error) throw error;
-    const p = regById(pid); if (p) { p.going = false; p.lft = false; }
-    return true;
-  } catch (e) { uiAlert('Не получилось снять отметку — проверь интернет.'); return false; }
-}
-function joinLink() {
+function joinLink(tid) {
   const base = location.protocol === 'file:' ? PUB_BASE : location.origin + location.pathname;
-  return base + '?join=1';
+  return base + '?join=' + tid;
 }
 async function goingSet(pid, on) {
   if (!isAdmin()) return;
@@ -3091,8 +3097,8 @@ async function goingSet(pid, on) {
 }
 function posChipHtml(p) {
   const multi = posArr(p).length > 1;
-  return `<button class="poschip cut ${multi ? 'multi' : ''} ${p.going ? 'going' : ''}" data-action="pprofile" data-pid="${p.id}" data-search="${esc((p.name + ' ' + (p.nick || '')).toLowerCase())}" data-tip="${p.going ? 'Идёт на турик' : (multi ? 'Играет на нескольких позициях' : '')}">
-    ${p.going ? '<span class="pcgo" data-tip="Идёт">✅</span>' : ''}${avatarByName(p.nick || p.name)}<span class="pcn">${esc(p.nick || p.name)}</span>${p.mmr != null ? `<span class="pcm">${p.mmr}</span>` : ''}${p.lft ? '<span class="pclft" data-tip="Ищет команду">🔎</span>' : ''}
+  return `<button class="poschip cut ${multi ? 'multi' : ''}" data-action="pprofile" data-pid="${p.id}" data-search="${esc((p.name + ' ' + (p.nick || '')).toLowerCase())}" data-tip="${multi ? 'Играет на нескольких позициях' : ''}">
+    ${avatarByName(p.nick || p.name)}<span class="pcn">${esc(p.nick || p.name)}</span>${p.mmr != null ? `<span class="pcm">${p.mmr}</span>` : ''}
   </button>`;
 }
 function posRowsHtml(list) {
@@ -3107,30 +3113,34 @@ function posRowsHtml(list) {
 /* Экран самостоятельной отметки по ссылке (?join=1): найди себя в базе и жми «иду». */
 function screenJoin() {
   const players = regPlayers();
-  const going = players.filter(p => p.going).length;
+  const su = signupsFor(joinTid);
+  const going = Object.values(su).filter(x => x.going && !x.lft).length;
+  const lftN = Object.values(su).filter(x => x.lft).length;
   return `<div class="joinwrap">
     <div class="joinhead cut">
       <div class="jh-logo">RC</div>
       <div class="jh-txt">
-        <div class="jh-t">Отметься на ближайший сбор</div>
-        <div class="jh-s">Найди себя → жми <b>«я иду»</b>. Нет команды — жми <b>«ищу команду»</b>. Уже идёт: <b>${going}</b></div>
+        <div class="jh-t">${joinTourName ? esc(joinTourName) : 'Отметься на сбор'}</div>
+        <div class="jh-s">Найди себя → жми <b>«я иду»</b>. Нет команды — жми <b>«ищу команду»</b>. Идёт: <b>${going}</b> · ищут команду: <b>${lftN}</b></div>
       </div>
     </div>
-    <div class="joinwarn">⚠️ Отмечайся <b>только за себя</b>. Список — наша база игроков, организаторы знают каждого. Кто отметит не себя — уберут.</div>
+    <div class="joinwarn">⚠️ Отмечайся <b>только за себя</b> и <b>именно на этот турнир</b>. Список — наша база; организаторы знают каждого, кто отметит не себя — уберут.</div>
     <input id="joinSearch" class="regsearch joinsearch" placeholder="🔎 Найди себя — имя или ник…" autocomplete="off">
     ${players.length ? `<div class="joinlist">${players.map(joinRow).join('')}</div>` : `<div class="empty"><span class="big">⏳</span>База загружается…</div>`}
     <div class="joinfoot note">Тебя нет в списке? Напиши организатору в WhatsApp — добавит в базу.</div>
   </div>`;
 }
 function joinRow(p) {
-  const goActive = p.going && !p.lft;   // иду (с командой)
-  const lftActive = p.going && p.lft;   // иду + ищу команду
+  const s = signupsFor(joinTid)[p.id] || {};
+  const goActive = s.going && !s.lft;   // иду (с командой / в пул на драфт)
+  const lftActive = !!s.lft;            // ищу команду
+  const signed = s.going || s.lft;
   const sub = [(p.nick && p.name.toLowerCase() !== p.nick.toLowerCase()) ? esc(p.name) : '', p.mmr != null ? p.mmr + ' MMR' : ''].filter(Boolean).join(' · ');
-  return `<div class="joinrow cut ${p.going ? 'go' : ''} ${lftActive ? 'lft' : ''}" data-search="${esc((p.name + ' ' + (p.nick || '')).toLowerCase())}">
+  return `<div class="joinrow cut ${signed ? 'go' : ''} ${lftActive ? 'lft' : ''}" data-search="${esc((p.name + ' ' + (p.nick || '')).toLowerCase())}">
     <div class="jr-top">
       ${avatarByName(p.nick || p.name)}
       <div class="jr-col"><span class="jr-n">${esc(p.nick || p.name)}</span>${sub ? `<span class="jr-sub">${sub}</span>` : ''}</div>
-      ${p.going ? `<span class="jr-tag ${lftActive ? 'lft' : 'go'}">${lftActive ? '🔎 ищет команду' : '✓ идёт'}</span>` : ''}
+      ${signed ? `<span class="jr-tag ${lftActive ? 'lft' : 'go'}">${lftActive ? '🔎 ищет команду' : '✓ идёт'}</span>` : ''}
     </div>
     <div class="jr-btns">
       <button class="jr-btn jr-go ${goActive ? 'on' : ''}" data-action="joingo" data-pid="${p.id}" data-lft="0">${goActive ? '✓ я иду' : 'я иду'}</button>
@@ -3144,8 +3154,6 @@ function screenPlayers() {
   if (regPosFilter === 'one') list = list.filter(p => posArr(p).length === 1);
   else if (regPosFilter === 'flex') list = list.filter(p => posArr(p).length > 1);
   if (regMmrMin) list = list.filter(p => (p.mmr || 0) >= regMmrMin);
-  if (regGoing) list = list.filter(p => p.going);
-  const goingCount = regPlayers().filter(p => p.going).length;
   const rows = list.map(p => {
     const peak = peakMmr(p), titles = regTitles(p.id);
     const trend = peak > (p.mmr || 0) ? `<span class="ppeak" data-tip="Пиковый MMR за историю">пик ${peak}</span>` : '';
@@ -3156,31 +3164,23 @@ function screenPlayers() {
         <button class="mini del" data-action="pregdel" data-pid="${p.id}" data-tip="Удалить из базы">✕</button>
       </span>` : '';
     const pos = posArr(p).map(n => `<span class="posmini" data-tip="${esc(posLabel(n))}">${n}</span>`).join('');
-    const lft = p.lft ? `<span class="lftbadge" data-tip="${esc(p.lftNote || 'Ищет команду')}">🔎 LFT</span>` : '';
-    const going = p.going ? `<span class="goingbadge" data-tip="Идёт на турик">✅ идёт</span>` : '';
-    const goTog = admin ? `<button class="mini goingtog ${p.going ? 'on' : ''}" data-action="goingtoggle" data-pid="${p.id}" data-tip="${p.going ? 'Идёт — снять' : 'Отметить: идёт на турик'}">✅</button>` : '';
-    const tip = [p.nick ? '@' + p.nick : '', p.mmr != null ? p.mmr + ' MMR' : '', posArr(p).map(posLabel).join(', '), p.going ? 'идёт' : '', p.lft ? 'ищет команду' : ''].filter(Boolean).join(' · ') || 'Открыть профиль';
-    return `<div class="prow cut ${p.going ? 'go' : ''}" data-action="pprofile" data-pid="${p.id}"${p.lft ? ' data-lft="1"' : ''} data-search="${esc((p.name + ' ' + (p.nick || '')).toLowerCase())}" data-tip="${esc(tip)}">
+    const tip = [p.nick ? '@' + p.nick : '', p.mmr != null ? p.mmr + ' MMR' : '', posArr(p).map(posLabel).join(', ')].filter(Boolean).join(' · ') || 'Открыть профиль';
+    return `<div class="prow cut" data-action="pprofile" data-pid="${p.id}" data-search="${esc((p.name + ' ' + (p.nick || '')).toLowerCase())}" data-tip="${esc(tip)}">
       ${avatarByName(p.nick || p.name)}
       <div class="pcol"><span class="pnm">${esc(p.name)}${pos}</span>${p.nick ? `<span class="pnk">@${esc(p.nick)}</span>` : ''}</div>
-      ${going}${lft}${tt}${trend}
+      ${tt}${trend}
       <span class="pmmr">${p.mmr != null ? p.mmr : '—'}<small>MMR</small></span>
-      ${goTog}${wa}${tools}
+      ${wa}${tools}
     </div>`;
   }).join('');
-  const lftCount = list.filter(p => p.lft).length;
   const byPos = regView === 'pos';
   return `<div class="regwrap${byPos ? ' regwide' : ''}">
     <div class="reghead">
       <h2>База игроков</h2><span class="regcount">${DB.players.length}</span>
       <span style="flex:1"></span>
-      <button class="btn sm ${regGoing ? 'primary' : 'ghost'}" data-action="goingfilter" data-tip="Показать только тех, кто идёт на ближайший турик (пул для драфта)">✅ Идут${goingCount ? ` (${goingCount})` : ''}</button>
-      ${admin ? `<button class="btn sm ghost" data-action="joinlink" data-tip="Ссылка «отметься на сбор» — кинь в WhatsApp, народ отметится сам">🔗 Ссылка отметки</button>` : ''}
-      ${admin && regGoing ? `<button class="btn sm ghost danger" data-action="goingclear" data-tip="Снять участие у всех (между турниками)">Сбросить</button>` : ''}
       <select id="regMmr" class="regmmrsel" data-tip="Фильтр по рейтингу">${[[0, 'Любой MMR'], [2000, '2000+'], [4000, '4000+'], [6000, '6000+'], [8000, '8000+'], [10000, '10000+']].map(([v, l]) => `<option value="${v}" ${regMmrMin === v ? 'selected' : ''}>${l}</option>`).join('')}</select>
       <span class="segbtns" data-tip="Фильтр по позициям">${[['all', 'Все'], ['one', '1 поз.'], ['flex', 'Флекс']].map(([v, l]) => `<button class="btn sm ${regPosFilter === v ? 'primary' : 'ghost'}" data-action="posfilter" data-val="${v}">${l}</button>`).join('')}</span>
       <button class="btn sm ghost" data-action="regview" data-tip="Переключить вид">${byPos ? '☰ Списком' : '⛃ По позициям'}</button>
-      ${byPos ? '' : `<button class="btn sm ghost" data-action="lftfilter" data-tip="Показать только тех, кто ищет команду">🔎 LFT${lftCount ? ` (${lftCount})` : ''}</button>`}
       <input id="pSearch" class="regsearch" placeholder="Поиск по имени или нику…">
       ${admin ? `<button class="btn primary sm" data-action="pedit" data-tip="Добавить нового игрока">＋ Игрок</button>` : ''}
     </div>
@@ -3378,21 +3378,16 @@ function screenProfile(pid) {
         <div class="profsub">
           ${p.nick ? `<span class="pnk">@${esc(p.nick)}</span>` : ''}
           ${posArr(p).length ? `<span class="posset">${posChips(p)}</span>` : '<span class="note">позиции не указаны</span>'}
-          ${p.lft ? `<span class="lftbadge" data-tip="${esc(p.lftNote || 'Ищет команду')}">🔎 LFT</span>` : ''}
-          ${p.going ? `<span class="goingbadge" data-tip="Идёт на ближайший турик">✅ идёт</span>` : ''}
         </div>
       </div>
       <div class="profmmr"><b>${p.mmr != null ? p.mmr : '—'}</b><span>MMR${peak > (p.mmr || 0) ? ` · пик ${peak}` : ''}</span></div>
       <div class="profact">
         ${p.phone ? `<button class="btn sm" data-action="wa" data-phone="${esc(p.phone)}" data-tip="${esc(p.phone)}">🟢 WhatsApp</button>` : ''}
-        ${isPlayer() && myId() === p.id ? `<button class="btn sm ${p.lft ? 'primary' : ''}" data-action="lfttoggle" data-pid="${p.id}">${p.lft ? '✓ Ищу команду' : '🔎 Искать команду'}</button>` : ''}
-        ${admin ? `<button class="btn sm ${p.going ? 'primary' : 'ghost'}" data-action="goingtoggle" data-pid="${p.id}" data-tip="Идёт ли на ближайший турик">${p.going ? '✅ Идёт на турик' : 'Отметить: идёт'}</button>` : ''}
         ${admin ? `<button class="btn sm ghost" data-action="managelogin" data-pid="${p.id}" data-tip="Включить/сменить вход игроку">🔑 Вход игрока</button>` : ''}
         ${admin ? `<button class="btn sm ghost" data-action="pedit" data-pid="${p.id}">✎ Изменить</button>` : ''}
         ${isPlayer() && myId() === p.id ? `<button class="btn sm ghost" data-action="logout">Выйти</button>` : ''}
       </div>
     </div>
-    ${p.lft ? `<div class="profnote cut" style="--bl:rgba(45,212,191,.5)"><span>🔎 Ищет команду${p.lftNote ? ': ' + esc(p.lftNote) : ''}</span></div>` : ''}
     ${p.note ? `<div class="profnote cut"><span>📝 ${esc(p.note)}</span></div>` : ''}
     <div class="profgrid">
       <div class="pcard cut"><b>${s.tours}</b><span>турниров</span></div>
@@ -3863,21 +3858,26 @@ function draftHtml(t) {
   t.draftTeams = t.draftTeams || [];
   const assigned = new Set();
   t.draftTeams.forEach(tm => tm.members.forEach(id => assigned.add(id)));
-  const pool = DB.players.filter(p => p.going && !assigned.has(p.id)).sort((a, b) => (b.mmr || 0) - (a.mmr || 0));
+  const su = signupsFor(t.id);
+  const pool = DB.players.filter(p => su[p.id] && su[p.id].going && !assigned.has(p.id)).sort((a, b) => (b.mmr || 0) - (a.mmr || 0));
+  const lftPlayers = DB.players.filter(p => su[p.id] && su[p.id].lft && !assigned.has(p.id)).sort((a, b) => (b.mmr || 0) - (a.mmr || 0));
   const cap = t.opts.mmrCap || 0;
   const ready = t.draftTeams.filter(x => x.members.length).length;
   return `<div class="draftwrap">
     <div class="pophdr cut">
       <span class="tl">🎖 Сбор команд</span>
-      <span class="note">Жми <b>«＋ Команда»</b> и набирай игроков из базы (лимит по MMR учитывается). Либо <b>«★ Кэп»</b> у игрока из пула — для капитанского драфта.</span>
+      <span class="note">Жми <b>«＋ Команда»</b> и набирай игроков из базы. Либо <b>«★ Кэп»</b> у игрока из пула — капитанский драфт.</span>
       <span style="flex:1"></span>
+      ${admin ? `<button class="btn ghost sm" data-action="joinlink" data-tid="${t.id}" data-tname="${esc(t.name)}" data-tip="Ссылка «отметься на этот турнир» — в WhatsApp">🔗 Ссылка отметки</button>` : ''}
       ${admin ? `<button class="btn ghost sm" data-action="draftaddteam" data-tip="Добавить готовую команду (стак)">＋ Команда</button>` : ''}
       ${admin ? `<button class="btn primary sm" data-action="draftform" ${ready < 2 ? 'disabled' : ''} data-tip="Собрать сетку/группы из команд">Сформировать сетку →</button>` : ''}
     </div>
     <div class="draftgrid">
       <div class="draftpool cut">
-        <div class="draftcol-h">Пул <span>${pool.length}</span></div>
-        <div class="draftpool-list">${pool.length ? poolTierSections(pool, admin) : `<div class="note" style="padding:12px">Пул пуст. Отметь игроков <b>«✅ идёт»</b> на странице «Игроки».</div>`}</div>
+        <div class="draftcol-h">Пул <span>${pool.length}</span>${admin && (pool.length || lftPlayers.length) ? `<button class="mini" data-action="signclear" style="margin-left:auto" data-tip="Снять все отметки на этом турнире">↺ сброс</button>` : ''}</div>
+        <div class="draftpool-list">${pool.length ? poolTierSections(pool, admin) : `<div class="note" style="padding:12px">Пул пуст. Кинь <b>🔗 ссылку отметки</b> в WhatsApp — кто нажмёт <b>«я иду»</b>, попадёт сюда.</div>`}</div>
+        ${lftPlayers.length ? `<div class="draftcol-h" style="margin-top:16px">🔎 Ищут команду <span>${lftPlayers.length}</span></div>
+          <div class="draftpool-list">${lftPlayers.map(p => draftPoolItem(p, admin)).join('')}</div>` : ''}
       </div>
       <div class="draftteamswrap">
         <div class="draftcol-h">Команды <span>${t.draftTeams.length}</span></div>
@@ -3907,13 +3907,15 @@ function draftAddModal(t, tid) {
     ov.querySelector('#daSum').innerHTML = `Сумма <b>${sum}</b>${cap > 0 ? ` · осталось <b class="${rem < 0 ? 'over-t' : ''}">${rem}</b> до ${cap}` : ''}`;
     q = (q || '').trim().toLowerCase();
     // Лимит не запрещает — просто подсвечиваем тех, кто уводит в перебор (добавить всё равно можно).
+    const su = signupsFor(t.id);
+    const sig = p => su[p.id] || {};
     let players = DB.players.filter(p => !assigned.has(p.id));
     if (q) players = players.filter(p => (p.name + ' ' + (p.nick || '')).toLowerCase().includes(q));
-    players.sort((a, b) => (b.going ? 1 : 0) - (a.going ? 1 : 0) || (b.mmr || 0) - (a.mmr || 0));
+    players.sort((a, b) => ((sig(b).going || sig(b).lft) ? 1 : 0) - ((sig(a).going || sig(a).lft) ? 1 : 0) || (b.mmr || 0) - (a.mmr || 0));
     box.innerHTML = players.length
-      ? players.map(p => { const over = cap > 0 && (p.mmr || 0) > rem;
+      ? players.map(p => { const over = cap > 0 && (p.mmr || 0) > rem; const s = sig(p);
         return `<button type="button" class="regpickitem daItem" data-pid="${p.id}">
-          ${avatarByName(p.nick || p.name)}<span class="rpn">${esc(p.nick || p.name)}${p.going ? ' <i style="color:var(--green)">идёт</i>' : ''}</span>${posArr(p).length ? `<span class="rpp">${posArr(p).join('/')}</span>` : ''}<span class="rpm ${over ? 'over-t' : ''}">${p.mmr != null ? p.mmr : '—'}${over ? ' ⚠' : ''}</span>
+          ${avatarByName(p.nick || p.name)}<span class="rpn">${esc(p.nick || p.name)}${s.going ? ' <i style="color:var(--green)">идёт</i>' : (s.lft ? ' <i style="color:var(--gold2)">🔎</i>' : '')}</span>${posArr(p).length ? `<span class="rpp">${posArr(p).join('/')}</span>` : ''}<span class="rpm ${over ? 'over-t' : ''}">${p.mmr != null ? p.mmr : '—'}${over ? ' ⚠' : ''}</span>
         </button>`; }).join('')
       : `<div class="note" style="padding:10px">В базе никого не найдено.</div>`;
     box.querySelectorAll('.daItem').forEach(btn => btn.onclick = () => {
@@ -4285,7 +4287,7 @@ document.addEventListener('click', async e => {
     if (!t || !isAdmin()) return;
     if (await uiConfirm('Собрать сетку из этих команд? Пул драфта закроется.', { title: 'Сформировать сетку?', ok: 'Собрать' })) draftForm(t);
   }
-  else if (a === 'open') { view = { screen: 'tour', tid: el.dataset.tid }; render(); if (curT() && curT().phase === 'draft') regLoad(); }
+  else if (a === 'open') { view = { screen: 'tour', tid: el.dataset.tid }; render(); if (curT() && curT().phase === 'draft') { regLoad(); signupsLoad().then(() => { if (curT() && curT().phase === 'draft') render(); }); } }
   else if (a === 'del') {
     const tt = DB.tournaments.find(x => x.id === el.dataset.tid);
     if (tt && await uiConfirm(`Турнир «${tt.name}» удалится навсегда, вместе с результатами.`, { title: 'Удалить турнир?', ok: 'Удалить', danger: true })) {
@@ -4385,32 +4387,31 @@ document.addEventListener('click', async e => {
   else if (a === 'pedit') { if (isAdmin()) playerEditModal(el.dataset.pid || null); }
   else if (a === 'managelogin') { if (isAdmin()) manageLoginModal(el.dataset.pid); }
   else if (a === 'lfttoggle') { lftModal(el.dataset.pid); }
-  else if (a === 'lftfilter') {
-    const list = document.querySelector('.reglist'); if (!list) return;
-    el.classList.toggle('primary', list.classList.toggle('lftonly'));
-  }
   else if (a === 'regview') { regView = regView === 'pos' ? 'list' : 'pos'; render(); }
-  else if (a === 'goingfilter') { regGoing = !regGoing; render(); }
-  else if (a === 'goingtoggle') { if (isAdmin()) { const p = regById(el.dataset.pid); if (p) goingSet(p.id, !p.going); } }
   else if (a === 'joingo') {
-    const p = regById(el.dataset.pid); if (!p) return;
+    const p = regById(el.dataset.pid); if (!p || !joinTid) return;
     const wantLft = el.dataset.lft === '1';
-    // Жмём активную кнопку — снимаем; иначе ставим нужный режим (иду / иду+ищу).
-    const isActive = p.going && (wantLft === !!p.lft);
-    const ok = isActive ? await selfLeave(p.id) : await selfGoing(p.id, wantLft);
+    const s = signupsFor(joinTid)[p.id] || {};
+    // «я иду» → going; «ищу команду» → lft (взаимоисключающие). Тап по активной снимает.
+    const isActive = wantLft ? !!s.lft : (!!s.going && !s.lft);
+    const ok = isActive
+      ? await selfSignup(joinTid, p.id, false, false)
+      : await selfSignup(joinTid, p.id, !wantLft, wantLft);
     if (ok) { render(); toast(isActive ? 'Отметка снята' : (wantLft ? 'Ты в списке — ищешь команду 🔎' : 'Готово — ты идёшь! 🔥'), '', true); }
   }
   else if (a === 'joinlink') {
-    const link = joinLink();
-    try { if (navigator.share && matchMedia('(hover:none)').matches) { await navigator.share({ text: 'Отметься на ближайший сбор 👇\n' + link }); return; } }
+    const tid = el.dataset.tid, tn = el.dataset.tname || '';
+    const link = joinLink(tid);
+    const msg = `Отметься на «${tn}» 👇 (жми «я иду», нет команды — «ищу команду»)\n${link}`;
+    try { if (navigator.share && matchMedia('(hover:none)').matches) { await navigator.share({ text: msg }); return; } }
     catch (err) { if (err && err.name === 'AbortError') return; }
     try { await navigator.clipboard.writeText(link); toast('Ссылка на отметку скопирована — кидай в WhatsApp', '🔗', true); }
     catch (err) { toast(link); }
   }
-  else if (a === 'goingclear') {
-    if (!isAdmin()) return;
-    if (await uiConfirm('Снять участие у всех игроков? (обычно перед новым турником)', { title: 'Сбросить участие?', ok: 'Сбросить', danger: true })) {
-      try { await loadSB(); const { error } = await sb.rpc('rc_clear_going', { p_secret: rcSecret }); if (error) throw error; await regLoad(); toast('Участие сброшено'); }
+  else if (a === 'signclear') {
+    const tt = curT(); if (!tt || !isAdmin()) return;
+    if (await uiConfirm('Снять все отметки «иду / ищу команду» на этом турнире? (обычно перед новым сбором)', { title: 'Сбросить отметки?', ok: 'Сбросить', danger: true })) {
+      try { await loadSB(); const { error } = await sb.rpc('rc_signups_clear', { p_secret: rcSecret, p_tournament: tt.id }); if (error) throw error; delete SIGNUPS[tt.id]; render(); toast('Отметки сброшены'); }
       catch (e) { uiAlert('Не получилось — проверь связь и пароль.'); }
     }
   }
@@ -4894,11 +4895,17 @@ document.getElementById('importFile').addEventListener('change', e => {
   e.target.value = '';
 });
 
-if (new URLSearchParams(location.search).get('join')) {
-  joinMode = true;
+const _joinParam = new URLSearchParams(location.search).get('join');
+if (_joinParam) {
+  joinTid = _joinParam;
   view = { screen: 'join', tid: null };
   render();
-  regLoad().then(() => { if (view.screen === 'join') render(); });
+  // название турнира (для шапки) + свежая база + записи этого турнира
+  (async () => {
+    try { await loadSB(); const { data } = await sb.from('rc_tournaments').select('name').eq('id', joinTid).maybeSingle(); if (data && data.name) joinTourName = data.name; } catch (e) {}
+    await Promise.all([regLoad(), signupsLoad()]);
+    if (view.screen === 'join') render();
+  })();
 } else {
   render();
   initLiveFromURL();
