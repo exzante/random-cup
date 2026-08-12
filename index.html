@@ -3056,7 +3056,9 @@ let regPosFilter = 'all';   // all | one | flex
 let regMmrMin = 0;          // фильтр по рейтингу
 let joinTid = null;         // на какой турнир идёт отметка (?join=<id>)
 let joinTourName = '';      // название турнира на странице отметки
+let joinSignupMode = 'going'; // режим отметки турнира на чек-ине: 'going' (я иду) | 'lft' (ищу команду)
 let SIGNUPS = {};           // { tid: { pid: {going, lft, at} } } — записи по турнирам из облака
+function signupModeOf(t) { return (t && t.opts && t.opts.signup === 'lft') ? 'lft' : 'going'; }
 function signupsFor(tid) { return SIGNUPS[tid] || {}; }
 async function signupsLoad() {
   try {
@@ -3114,14 +3116,14 @@ function posRowsHtml(list) {
 function screenJoin() {
   const players = regPlayers();
   const su = signupsFor(joinTid);
-  const going = Object.values(su).filter(x => x.going && !x.lft).length;
-  const lftN = Object.values(su).filter(x => x.lft).length;
+  const isLft = joinSignupMode === 'lft';
+  const cnt = isLft ? Object.values(su).filter(x => x.lft).length : Object.values(su).filter(x => x.going).length;
   return `<div class="joinwrap">
     <div class="joinhead cut">
       <div class="jh-logo">RC</div>
       <div class="jh-txt">
         <div class="jh-t">${joinTourName ? esc(joinTourName) : 'Отметься на сбор'}</div>
-        <div class="jh-s">Найди себя → жми <b>«я иду»</b>. Нет команды — жми <b>«ищу команду»</b>. Идёт: <b>${going}</b> · ищут команду: <b>${lftN}</b></div>
+        <div class="jh-s">Найди себя → жми <b>«${isLft ? 'ищу команду' : 'я иду'}»</b>. ${isLft ? 'Ищут команду' : 'Идёт'}: <b>${cnt}</b></div>
       </div>
     </div>
     <div class="joinwarn">⚠️ Отмечайся <b>только за себя</b> и <b>именно на этот турнир</b>. Список — наша база; организаторы знают каждого, кто отметит не себя — уберут.</div>
@@ -3132,19 +3134,17 @@ function screenJoin() {
 }
 function joinRow(p) {
   const s = signupsFor(joinTid)[p.id] || {};
-  const goActive = s.going && !s.lft;   // иду (с командой / в пул на драфт)
-  const lftActive = !!s.lft;            // ищу команду
-  const signed = s.going || s.lft;
+  const isLft = joinSignupMode === 'lft';
+  const active = isLft ? !!s.lft : !!s.going;
   const sub = [(p.nick && p.name.toLowerCase() !== p.nick.toLowerCase()) ? esc(p.name) : '', p.mmr != null ? p.mmr + ' MMR' : ''].filter(Boolean).join(' · ');
-  return `<div class="joinrow cut ${signed ? 'go' : ''} ${lftActive ? 'lft' : ''}" data-search="${esc((p.name + ' ' + (p.nick || '')).toLowerCase())}">
+  return `<div class="joinrow cut ${active ? 'go' : ''} ${active && isLft ? 'lft' : ''}" data-search="${esc((p.name + ' ' + (p.nick || '')).toLowerCase())}">
     <div class="jr-top">
       ${avatarByName(p.nick || p.name)}
       <div class="jr-col"><span class="jr-n">${esc(p.nick || p.name)}</span>${sub ? `<span class="jr-sub">${sub}</span>` : ''}</div>
-      ${signed ? `<span class="jr-tag ${lftActive ? 'lft' : 'go'}">${lftActive ? '🔎 ищет команду' : '✓ идёт'}</span>` : ''}
+      ${active ? `<span class="jr-tag ${isLft ? 'lft' : 'go'}">${isLft ? '🔎 ищет команду' : '✓ идёт'}</span>` : ''}
     </div>
     <div class="jr-btns">
-      <button class="jr-btn jr-go ${goActive ? 'on' : ''}" data-action="joingo" data-pid="${p.id}" data-lft="0">${goActive ? '✓ я иду' : 'я иду'}</button>
-      <button class="jr-btn jr-lft ${lftActive ? 'on' : ''}" data-action="joingo" data-pid="${p.id}" data-lft="1">${lftActive ? '✓ ищу команду' : '🔎 ищу команду'}</button>
+      <button class="jr-btn ${isLft ? 'jr-lft' : 'jr-go'} ${active ? 'on' : ''}" data-action="joingo" data-pid="${p.id}" data-lft="${isLft ? '1' : '0'}">${active ? (isLft ? '✓ ищу команду' : '✓ я иду') : (isLft ? '🔎 ищу команду' : 'я иду')}</button>
     </div>
   </div>`;
 }
@@ -3859,25 +3859,29 @@ function draftHtml(t) {
   const assigned = new Set();
   t.draftTeams.forEach(tm => tm.members.forEach(id => assigned.add(id)));
   const su = signupsFor(t.id);
+  const mode = signupModeOf(t);
   const pool = DB.players.filter(p => su[p.id] && su[p.id].going && !assigned.has(p.id)).sort((a, b) => (b.mmr || 0) - (a.mmr || 0));
   const lftPlayers = DB.players.filter(p => su[p.id] && su[p.id].lft && !assigned.has(p.id)).sort((a, b) => (b.mmr || 0) - (a.mmr || 0));
   const cap = t.opts.mmrCap || 0;
   const ready = t.draftTeams.filter(x => x.members.length).length;
+  const showPool = mode === 'going' || pool.length;
+  const showLft = mode === 'lft' || lftPlayers.length;
   return `<div class="draftwrap">
     <div class="pophdr cut">
       <span class="tl">🎖 Сбор команд</span>
       <span class="note">Жми <b>«＋ Команда»</b> и набирай игроков из базы. Либо <b>«★ Кэп»</b> у игрока из пула — капитанский драфт.</span>
       <span style="flex:1"></span>
+      ${admin ? `<button class="btn ghost sm" data-action="signmode" data-tip="Что жмут игроки на отметке: «я иду» (драфт) или «ищу команду» (готовые стаки)">Отметка: ${mode === 'lft' ? '🔎 ищу команду' : '🎖 я иду'}</button>` : ''}
       ${admin ? `<button class="btn ghost sm" data-action="joinlink" data-tid="${t.id}" data-tname="${esc(t.name)}" data-tip="Ссылка «отметься на этот турнир» — в WhatsApp">🔗 Ссылка отметки</button>` : ''}
       ${admin ? `<button class="btn ghost sm" data-action="draftaddteam" data-tip="Добавить готовую команду (стак)">＋ Команда</button>` : ''}
       ${admin ? `<button class="btn primary sm" data-action="draftform" ${ready < 2 ? 'disabled' : ''} data-tip="Собрать сетку/группы из команд">Сформировать сетку →</button>` : ''}
     </div>
     <div class="draftgrid">
       <div class="draftpool cut">
-        <div class="draftcol-h">Пул <span>${pool.length}</span>${admin && (pool.length || lftPlayers.length) ? `<button class="mini" data-action="signclear" style="margin-left:auto" data-tip="Снять все отметки на этом турнире">↺ сброс</button>` : ''}</div>
-        <div class="draftpool-list">${pool.length ? poolTierSections(pool, admin) : `<div class="note" style="padding:12px">Пул пуст. Кинь <b>🔗 ссылку отметки</b> в WhatsApp — кто нажмёт <b>«я иду»</b>, попадёт сюда.</div>`}</div>
-        ${lftPlayers.length ? `<div class="draftcol-h" style="margin-top:16px">🔎 Ищут команду <span>${lftPlayers.length}</span></div>
-          <div class="draftpool-list">${lftPlayers.map(p => draftPoolItem(p, admin)).join('')}</div>` : ''}
+        ${showPool ? `<div class="draftcol-h">Пул <span>${pool.length}</span>${admin && (pool.length || lftPlayers.length) ? `<button class="mini" data-action="signclear" style="margin-left:auto" data-tip="Снять все отметки на этом турнире">↺ сброс</button>` : ''}</div>
+        <div class="draftpool-list">${pool.length ? poolTierSections(pool, admin) : `<div class="note" style="padding:12px">Пул пуст. Кинь <b>🔗 ссылку отметки</b> в WhatsApp — кто нажмёт <b>«я иду»</b>, попадёт сюда.</div>`}</div>` : ''}
+        ${showLft ? `<div class="draftcol-h" style="${showPool ? 'margin-top:16px' : ''}">🔎 Ищут команду <span>${lftPlayers.length}</span>${admin && !showPool && (pool.length || lftPlayers.length) ? `<button class="mini" data-action="signclear" style="margin-left:auto" data-tip="Снять все отметки на этом турнире">↺ сброс</button>` : ''}</div>
+          <div class="draftpool-list">${lftPlayers.length ? lftPlayers.map(p => draftPoolItem(p, admin)).join('') : `<div class="note" style="padding:12px">Пока никто. Кинь <b>🔗 ссылку отметки</b> — кто нажмёт <b>«ищу команду»</b>, попадёт сюда.</div>`}</div>` : ''}
       </div>
       <div class="draftteamswrap">
         <div class="draftcol-h">Команды <span>${t.draftTeams.length}</span></div>
@@ -4225,7 +4229,7 @@ function drawEdges() {
 window.addEventListener('resize', () => requestAnimationFrame(drawEdges));
 
 /* ================= events ================= */
-const MUT_ACTIONS = new Set(['win', 'score', 'draw', 'undo', 'rename', 'pdel', 'fill', 'gadd', 'gdel', 'makepo', 'resetpo', 'reseed', 'addp', 'trename', 'raddgo', 'rdel', 'editinfo', 'draftcap', 'draftaddteam', 'draftrename', 'draftadd', 'draftremmem', 'draftremteam', 'draftmove', 'draftform']);
+const MUT_ACTIONS = new Set(['win', 'score', 'draw', 'undo', 'rename', 'pdel', 'fill', 'gadd', 'gdel', 'makepo', 'resetpo', 'reseed', 'addp', 'trename', 'raddgo', 'rdel', 'editinfo', 'draftcap', 'draftaddteam', 'draftrename', 'draftadd', 'draftremmem', 'draftremteam', 'draftmove', 'draftform', 'signmode', 'signclear']);
 document.addEventListener('click', async e => {
   const el = e.target.closest('[data-action]');
   if (!el || el.disabled) return;
@@ -4407,6 +4411,12 @@ document.addEventListener('click', async e => {
     catch (err) { if (err && err.name === 'AbortError') return; }
     try { await navigator.clipboard.writeText(link); toast('Ссылка на отметку скопирована — кидай в WhatsApp', '🔗', true); }
     catch (err) { toast(link); }
+  }
+  else if (a === 'signmode') {
+    const tt = curT(); if (!tt || !isAdmin()) return;
+    tt.opts.signup = (signupModeOf(tt) === 'lft') ? 'going' : 'lft';
+    save(); render();
+    toast(tt.opts.signup === 'lft' ? 'Отметка: «ищу команду» (готовые стаки)' : 'Отметка: «я иду» (драфт)', '', true);
   }
   else if (a === 'signclear') {
     const tt = curT(); if (!tt || !isAdmin()) return;
@@ -4902,7 +4912,7 @@ if (_joinParam) {
   render();
   // название турнира (для шапки) + свежая база + записи этого турнира
   (async () => {
-    try { await loadSB(); const { data } = await sb.from('rc_tournaments').select('name').eq('id', joinTid).maybeSingle(); if (data && data.name) joinTourName = data.name; } catch (e) {}
+    try { await loadSB(); const { data } = await sb.from('rc_tournaments').select('name,data').eq('id', joinTid).maybeSingle(); if (data) { if (data.name) joinTourName = data.name; if (data.data && data.data.opts && data.data.opts.signup === 'lft') joinSignupMode = 'lft'; } } catch (e) {}
     await Promise.all([regLoad(), signupsLoad()]);
     if (view.screen === 'join') render();
   })();
