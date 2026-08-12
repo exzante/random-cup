@@ -512,13 +512,32 @@ canvas.confetti{position:fixed;inset:0;z-index:100;pointer-events:none}
 
 /* ================= зал славы ================= */
 .hof{--c:14px;--bl:linear-gradient(135deg,rgba(212,175,55,.5),var(--line) 65%);max-width:560px;margin:22px auto 0;padding:16px 20px}
-.hofhead{font-family:var(--disp);font-weight:600;font-size:12px;letter-spacing:.3em;text-transform:uppercase;color:var(--gold2);margin-bottom:10px;text-align:center}
+.hofhead{display:flex;align-items:center;gap:8px;font-family:var(--disp);font-weight:600;font-size:12px;letter-spacing:.3em;text-transform:uppercase;color:var(--gold2);margin-bottom:10px}
 .hofrow{display:flex;align-items:center;gap:11px;padding:7px 4px;border-bottom:1px solid rgba(39,34,26,.55)}
 .hofrow:last-child{border-bottom:none}
 .hofrow .hofn{font-family:var(--disp);font-weight:600;font-size:12px;color:var(--dim);width:18px;text-align:center}
 .hofrow:first-of-type .hofn{color:var(--gold)}
 .hofrow .hofname{flex:1;min-width:0;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .hofrow .hofmed{font-size:12.5px;color:var(--muted);white-space:nowrap;font-variant-numeric:tabular-nums}
+/* полная страница зала славы */
+.hofwrap{max-width:900px;margin:18px auto 70px;padding:0 14px}
+.hofpage-head{display:flex;align-items:center;gap:14px;margin-bottom:16px;flex-wrap:wrap}
+.hofpage-head h2{font-family:var(--disp);font-size:22px;letter-spacing:.05em;text-transform:uppercase;color:var(--gold2);margin:0}
+.hofpage-head .note{margin-left:auto}
+.hofcols{display:grid;grid-template-columns:1fr 1fr;gap:18px;align-items:start}
+.hofsec{--c:14px;--bl:var(--line);padding:14px 18px}
+.hofsec-h{font-family:var(--disp);font-weight:600;font-size:12px;letter-spacing:.22em;text-transform:uppercase;color:var(--gold2);margin-bottom:12px}
+.hoftour{padding:9px 2px;border-bottom:1px solid rgba(39,34,26,.55)}
+.hoftour:last-child{border-bottom:none}
+.ht-top{display:flex;align-items:baseline;gap:10px;margin-bottom:5px}
+.ht-name{flex:1;min-width:0;font-weight:700;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ht-date{flex:none;font-size:11px;color:var(--dim);font-variant-numeric:tabular-nums}
+.ht-podium{display:flex;flex-wrap:wrap;gap:6px}
+.ht-p{font-size:12.5px;font-weight:600;color:var(--muted);cursor:pointer;padding:2px 9px;border:1px solid var(--line);background:var(--panel2);white-space:nowrap;transition:border-color .12s,color .12s}
+.ht-p:hover{border-color:var(--gold-deep);color:var(--text)}
+.ht-p.gold{color:var(--gold2);border-color:var(--gold-deep);background:var(--gold-soft)}
+.ht-mem{margin-top:5px;font-size:11px;color:var(--dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+@media (max-width:760px){.hofcols{grid-template-columns:1fr}.hofwrap{margin-top:12px}}
 
 /* ================= roster (живой состав) ================= */
 .roster{position:fixed;top:60px;right:14px;bottom:54px;width:302px;z-index:25;--c:14px;--bl:var(--line2);--bg2:#0F0D0A;
@@ -933,7 +952,7 @@ function entryHumans(pl) {
   if (pl.members && pl.members.length) return pl.members.slice();
   return pl.name ? [pl.name] : [];
 }
-function hallOfFame() {
+function hallOfFame(limit = 8) {
   const agg = {};
   for (const t of DB.tournaments) {
     const p = podium(t);
@@ -946,7 +965,50 @@ function hallOfFame() {
       });
     });
   }
-  return Object.values(agg).sort((a, b) => b.g - a.g || b.s - a.s || b.b - a.b).slice(0, 8);
+  const all = Object.values(agg).sort((a, b) => b.g - a.g || b.s - a.s || b.b - a.b);
+  return limit ? all.slice(0, limit) : all;
+}
+// Чемпионы по турнирам (кто где когда) — только завершённые, свежие сверху.
+function hofTournaments() {
+  return DB.tournaments.filter(t => podium(t).first).map(t => {
+    const p = podium(t);
+    return { name: t.name, date: t.createdAt, fmt: t.format,
+      first: pname(t, p.first), firstMembers: entryHumans(t.players[p.first]),
+      second: p.second ? pname(t, p.second) : null,
+      third: p.third ? pname(t, p.third) : null };
+  }).sort((a, b) => (b.date || 0) - (a.date || 0));
+}
+function screenHof() {
+  const champs = hofTournaments();
+  const ranking = hallOfFame(0);
+  return `<div class="hofwrap">
+    <div class="hofpage-head">
+      <button class="btn sm ghost" data-action="home">← Назад</button>
+      <h2>🏛 Зал славы</h2>
+      <span class="note">${champs.length} турнир(ов) · ${ranking.length} с медалями</span>
+    </div>
+    <div class="hofcols">
+      <div class="hofsec cut">
+        <div class="hofsec-h">🏆 Чемпионы турниров</div>
+        ${champs.length ? champs.map(c => `<div class="hoftour">
+          <div class="ht-top"><span class="ht-name">${esc(c.name)}</span><span class="ht-date">${new Date(c.date).toLocaleDateString('ru-RU')}</span></div>
+          <div class="ht-podium">
+            <span class="ht-p gold" data-action="pstats" data-name="${esc(c.first)}" data-tip="Статистика">🏆 ${esc(c.first)}</span>
+            ${c.second ? `<span class="ht-p" data-action="pstats" data-name="${esc(c.second)}" data-tip="Статистика">🥈 ${esc(c.second)}</span>` : ''}
+            ${c.third ? `<span class="ht-p" data-action="pstats" data-name="${esc(c.third)}" data-tip="Статистика">🥉 ${esc(c.third)}</span>` : ''}
+          </div>
+          ${c.firstMembers.length > 1 ? `<div class="ht-mem">${c.firstMembers.map(esc).join(' · ')}</div>` : ''}
+        </div>`).join('') : '<div class="note" style="padding:14px">Пока нет завершённых турниров.</div>'}
+      </div>
+      <div class="hofsec cut">
+        <div class="hofsec-h">👑 Рейтинг по медалям</div>
+        ${ranking.length ? ranking.map((r, i) => `<div class="hofrow" data-action="pstats" data-name="${esc(r.name)}" data-tip="Статистика игрока">
+          <span class="hofn">${i + 1}</span>${avatarByName(r.name)}<span class="hofname">${esc(r.name)}</span>
+          <span class="hofmed">${r.g ? `🥇×${r.g}` : ''} ${r.s ? `🥈×${r.s}` : ''} ${r.b ? `🥉×${r.b}` : ''}</span>
+        </div>`).join('') : '<div class="note" style="padding:14px">Пока нет медалей.</div>'}
+      </div>
+    </div>
+  </div>`;
 }
 
 /* ================= bracket generation ================= */
@@ -2831,6 +2893,7 @@ function render() {
   render._last = key;
   const scrolls = [...app.querySelectorAll('.bsec')].map(s => ({ l: s.scrollLeft, t: s.scrollTop }));
   if (view.screen === 'join') app.innerHTML = screenJoin();
+  else if (view.screen === 'hof') app.innerHTML = screenHof();
   else if (view.screen === 'home') app.innerHTML = screenHome();
   else if (view.screen === 'create') app.innerHTML = screenCreate();
   else if (view.screen === 'players') app.innerHTML = screenPlayers();
@@ -3559,19 +3622,23 @@ async function lobbyRpc(fn, args, okMsg) {
   catch (e) { uiAlert('Не получилось — проверь вход и связь.'); return false; }
 }
 function screenHome() {
-  let totalP = 0, totalM = 0;
+  let totalM = 0;
+  const totalP = DB.players.length;   // игроков в базе
   DB.tournaments.forEach(t => {
-    totalP += Object.keys(t.players).length;
     totalM += Object.values(t.matches).filter(m => matchDone(m) && !m.auto).length;
   });
   const cards = DB.tournaments.map(t => {
     const p = podium(t);
     const pr = progressOf(t);
-    const np = Object.keys(t.players).length;
+    const entries = Object.values(t.players);
+    const isTeams = entries.some(x => x.members && x.members.length);
+    const np = entries.length;
+    const nPlayers = entries.reduce((a, x) => a + (x.members && x.members.length ? x.members.length : 1), 0);
+    const partTxt = isTeams ? `${np} ${np === 1 ? 'команда' : 'команд'} · ${nPlayers} игроков` : `${np} уч.`;
     return `<div class="tcard cut">
       <span class="fico">${FMT_ICO[t.format]}</span>
       <div class="tt">${esc(t.name)}</div>
-      <div class="meta">${FMT_LABEL[t.format]} · ${np} уч. · ${new Date(t.createdAt).toLocaleDateString('ru-RU')}</div>
+      <div class="meta">${FMT_LABEL[t.format]} · ${partTxt} · ${new Date(t.createdAt).toLocaleDateString('ru-RU')}</div>
       ${p.first ? `<div class="champline">🏆 ${esc(pname(t, p.first))}</div>` : `<div class="meta">в процессе — ${pr.pct}%</div>`}
       <div class="pbar ${pr.pct === 100 ? 'full' : ''}"><i style="width:${pr.pct}%"></i></div>
       <div class="row">
@@ -3582,15 +3649,15 @@ function screenHome() {
     </div>`;
   }).join('');
   const hof = hallOfFame();
-  const hofHtml = hof.length ? `<div class="hof cut">
-      <div class="hofhead">🏛 Зал славы</div>
-      ${hof.map((r, i) => `<div class="hofrow" data-action="pstats" data-name="${esc(r.name)}" data-tip="Статистика игрока">
+  const hofHtml = `<div class="hof cut">
+      <div class="hofhead">🏛 Зал славы<span style="flex:1"></span><button class="btn sm ghost" data-action="hofpage" data-tip="Полный зал славы — кто где когда">${hof.length ? 'Весь зал →' : 'Открыть →'}</button></div>
+      ${hof.length ? hof.map((r, i) => `<div class="hofrow" data-action="pstats" data-name="${esc(r.name)}" data-tip="Статистика игрока">
         <span class="hofn">${i + 1}</span>
         ${avatarByName(r.name)}
         <span class="hofname">${esc(r.name)}</span>
         <span class="hofmed">${r.g ? `🥇×${r.g}` : ''} ${r.s ? `🥈×${r.s}` : ''} ${r.b ? `🥉×${r.b}` : ''}</span>
-      </div>`).join('')}
-    </div>` : '';
+      </div>`).join('') : '<div class="note" style="padding:6px 2px">Пока пусто — сыграйте турнир, и чемпионы появятся тут.</div>'}
+    </div>`;
   return `<div class="hero">
       ${SKYLINE}
       <div class="eyebrow">Zharkent 🇰🇿</div>
@@ -4240,6 +4307,7 @@ document.addEventListener('click', async e => {
   if (tbMenuOpen && a !== 'tbmenu') { tbMenuOpen = false; renderTopbar(); }
 
   if (a === 'home') { view = { screen: 'home', tid: null }; render(); }
+  else if (a === 'hofpage') { view = { screen: 'hof', tid: null }; render(); }
   else if (a === 'new') { view = { screen: 'create', tid: null }; render(); regLoad(); }
   else if (a === 'help') showHelp();
   else if (a === 'coachoff') { localStorage.setItem('turnir_coach2', '1'); render(); }
