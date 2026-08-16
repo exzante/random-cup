@@ -1837,7 +1837,7 @@ function changeFormatModal(t) {
       </div>
       <div class="frow inline hidden" id="cfGroupsRow" style="margin-top:10px">
         <label class="chk">Групп:&nbsp;<select id="cfGroups">${[1, 2, 3, 4, 5, 6, 8].map(n => `<option value="${n}" ${(o.groupCount || 2) === n ? 'selected' : ''}>${n === 1 ? '1 — все со всеми' : n}</option>`).join('')}</select></label>
-        <label class="chk">Проходят:&nbsp;<select id="cfAdv">${[1, 2, 3, 4].map(n => `<option value="${n}" ${(o.advance || 2) === n ? 'selected' : ''}>топ-${n}</option>`).join('')}</select></label>
+        <label class="chk">Проходят:&nbsp;<select id="cfAdv">${[1, 2, 3, 4, 5, 6].map(n => `<option value="${n}" ${(o.advance || 2) === n ? 'selected' : ''}>топ-${n}</option>`).join('')}</select></label>
       </div>
       <div class="frow inline" style="margin-top:10px">
         <label class="chk" id="cfBoGroupW"><span id="cfBoGroupL">Группа</span>:&nbsp;${boSel('cfBoGroup', o.boGroup)}</label>
@@ -4113,7 +4113,7 @@ function groupsHtml(t, champ) {
     html += `<span class="note">Тяни игрока из таблицы в другую группу — составы пересоберутся.</span>
       <span class="spacer" style="flex:1"></span>
       <label class="chk" data-tip="Сколько лучших из каждой группы выйдут в плей-офф">Проходят:&nbsp;<select id="poAdv">
-        ${[1,2,3,4].map(n => `<option value="${n}" ${n === adv ? 'selected' : ''}>топ-${n}</option>`).join('')}
+        ${[1,2,3,4,5,6].map(n => `<option value="${n}" ${n === adv ? 'selected' : ''}>топ-${n}</option>`).join('')}
       </select></label>
       <label class="chk"><input type="checkbox" id="poThird" ${t.opts.thirdPlace ? 'checked' : ''}> матч за 3-е</label>
       <button class="btn primary sm" data-action="makepo">Сформировать плей-офф →</button>`;
