@@ -367,6 +367,9 @@ table.stand td.pcell > span:nth-child(2){flex:1;min-width:0;overflow:hidden;text
 table.stand tr.q td{color:var(--gold2)}
 table.stand td.num,table.stand th.num{text-align:center;width:34px}
 .qbadge{font-family:var(--disp);font-size:8.5px;font-weight:600;letter-spacing:.1em;color:#161204;background:linear-gradient(135deg,var(--gold2),var(--gold));padding:1px 6px;margin-left:2px}
+.tieord{display:inline-flex;flex-direction:column;gap:0;margin-left:6px;vertical-align:middle;border:1px solid var(--line2);border-radius:4px;overflow:hidden}
+.tieord .tarr{padding:0 5px;font-size:9px;line-height:1.35;color:var(--gold2)}
+.tieord .tarr:disabled{opacity:.25;color:var(--muted)}
 .grow-tools{display:inline-flex;gap:1px;opacity:0;transition:opacity .12s;margin-left:auto}
 table.stand tr:hover .grow-tools{opacity:1}
 .gmatches{display:flex;flex-direction:column;gap:8px}
@@ -1385,9 +1388,23 @@ function standings(t, g) {
       ? tied.reduce((n, o) => o === s.pid ? n : n + (h2h[s.pid][o] || 0), 0)
       : 0;
   });
+  // Ручной тай-брейк: если организатор расставил равных стрелками (g.tie),
+  // его порядок решает СРЕДИ равных (key одинаков) — раньше личной встречи.
+  const tie = g.tie || null;
+  const tcmp = (a, b) => {
+    if (!tie) return 0;
+    const ra = tie[a.pid], rb = tie[b.pid];
+    return (ra == null || rb == null) ? 0 : ra - rb;
+  };
   return arr.sort((a, b) =>
-    key(b) - key(a) || b.h2h - a.h2h || (b.sf - b.sa) - (a.sf - a.sa) || b.sf - a.sf ||
+    key(b) - key(a) || tcmp(a, b) || b.h2h - a.h2h || (b.sf - b.sa) - (a.sf - a.sa) || b.sf - a.sf ||
     pname(t, a.pid).localeCompare(pname(t, b.pid), 'ru'));
+}
+// Сброс ручного тай-брейка группы, если у неё меняется результат матча.
+function clearTieIfGroup(t, m) {
+  if (!m || !m.bracket || !m.bracket.startsWith('g:') || !t.groups) return;
+  const g = t.groups.find(x => 'g:' + x.id === m.bracket);
+  if (g && g.tie) { delete g.tie; }
 }
 async function moveBetweenGroups(t, pid, fromGid, toGid) {
   const from = grp(t, fromGid), to = grp(t, toGid);
@@ -4188,8 +4205,18 @@ function groupsHtml(t, champ) {
     const st = standings(t, g);
     const gms = groupMatches(t, g);
     const gp = gms.filter(matchDone).length;
+    const keyOf = s => drawsOn(t) ? s.pts : s.w;   // равны ⇒ тай-брейк
     const rows = st.map((s, i) => {
       const q = i < adv;
+      // Стрелки ручного тай-брейка — только МЕЖДУ равными (совпал key с соседом), у организатора, до плей-офф.
+      const canUp = !locked && i > 0 && keyOf(st[i - 1]) === keyOf(s);
+      const canDown = !locked && i < st.length - 1 && keyOf(st[i + 1]) === keyOf(s);
+      const tieCtl = (canUp || canDown)
+        ? `<span class="tieord" data-tip="Ничья по очкам — расставь порядок вручную (кто проходит)">
+             <button class="mini tarr" data-action="tiemove" data-gid="${g.id}" data-pid="${s.pid}" data-dir="-1" ${canUp ? '' : 'disabled'}>▲</button>
+             <button class="mini tarr" data-action="tiemove" data-gid="${g.id}" data-pid="${s.pid}" data-dir="1" ${canDown ? '' : 'disabled'}>▼</button>
+           </span>`
+        : '';
       const tools = !locked
         ? `<span class="grow-tools">
              <button class="mini" data-tip="Переименовать" data-action="rename" data-pid="${s.pid}">✎</button>
@@ -4198,7 +4225,7 @@ function groupsHtml(t, champ) {
         : `<span class="grow-tools"><button class="mini" data-tip="Переименовать" data-action="rename" data-pid="${s.pid}">✎</button></span>`;
       return `<tr class="${q ? 'q' : ''}" data-pid="${s.pid}" data-gid="${g.id}">
         <td class="num">${i + 1}</td>
-        <td class="pcell">${avatar(t, s.pid)}<span>${esc(pname(t, s.pid))}</span>${q ? `<span class="qbadge" data-tip="Проходит в плей-офф при текущей таблице">Q</span>` : ''}${tools}</td>
+        <td class="pcell">${avatar(t, s.pid)}<span>${esc(pname(t, s.pid))}</span>${q ? `<span class="qbadge" data-tip="Проходит в плей-офф при текущей таблице">Q</span>` : ''}${tieCtl}${tools}</td>
         <td class="num">${s.w}</td>${draws ? `<td class="num">${s.d}</td>` : ''}<td class="num">${s.l}</td>
         <td class="num">${s.sf - s.sa > 0 ? '+' : ''}${s.sf - s.sa}</td>${draws ? `<td class="num pts">${s.pts}</td>` : ''}
       </tr>`;
@@ -4383,7 +4410,7 @@ function drawEdges() {
 window.addEventListener('resize', () => requestAnimationFrame(drawEdges));
 
 /* ================= events ================= */
-const MUT_ACTIONS = new Set(['win', 'score', 'draw', 'undo', 'rename', 'pdel', 'fill', 'gadd', 'gdel', 'makepo', 'resetpo', 'reseed', 'addp', 'trename', 'raddgo', 'rdel', 'editinfo', 'draftcap', 'draftaddteam', 'draftrename', 'draftadd', 'draftremmem', 'draftremteam', 'draftmove', 'draftform', 'signmode', 'signclear']);
+const MUT_ACTIONS = new Set(['win', 'score', 'draw', 'undo', 'rename', 'pdel', 'fill', 'gadd', 'gdel', 'makepo', 'resetpo', 'reseed', 'addp', 'trename', 'raddgo', 'rdel', 'editinfo', 'draftcap', 'draftaddteam', 'draftrename', 'draftadd', 'draftremmem', 'draftremteam', 'draftmove', 'draftform', 'signmode', 'signclear', 'tiemove']);
 document.addEventListener('click', async e => {
   const el = e.target.closest('[data-action]');
   if (!el || el.disabled) return;
@@ -4676,7 +4703,19 @@ document.addEventListener('click', async e => {
 
   else if (a === 'win') {
     if (!t) return;
-    setWinner(t, t.matches[el.dataset.mid], +el.dataset.si);
+    const m = t.matches[el.dataset.mid];
+    clearTieIfGroup(t, m);
+    setWinner(t, m, +el.dataset.si);
+  }
+  else if (a === 'tiemove') {
+    if (!t || !canEdit(t) || t.phase === 'po') return;
+    const g = grp(t, el.dataset.gid); if (!g) return;
+    const order = standings(t, g).map(s => s.pid);
+    const i = order.indexOf(el.dataset.pid), j = i + (+el.dataset.dir);
+    if (i < 0 || j < 0 || j >= order.length) return;
+    [order[i], order[j]] = [order[j], order[i]];
+    g.tie = {}; order.forEach((p, k) => { g.tie[p] = k; });
+    save(); render();
   }
   else if (a === 'score') {
     if (!t) return;
@@ -4685,6 +4724,7 @@ document.addEventListener('click', async e => {
     // Группа: счёт всегда редактируем, победитель пересчитывается по счёту (в т.ч. снимается)
     if (m.bracket && m.bracket.startsWith('g:')) {
       if (t.phase === 'po') return;                        // группы закрыты после плей-офф
+      clearTieIfGroup(t, m);
       m.slots[si].score = (m.slots[si].score || 0) + 1;
       const w = winnerFromScore(t, m);
       if (w && !m.winner) sndWin();
@@ -4710,12 +4750,14 @@ document.addEventListener('click', async e => {
     if (!t) return;
     const m = t.matches[el.dataset.mid];
     if (!canDraw(t, m)) return;
+    clearTieIfGroup(t, m);
     if (m.draw) { m.draw = false; }               // повторный клик — снять ничью
     else { m.winner = null; m.auto = false; m.draw = true; }
     save(); render();
   }
   else if (a === 'undo') {
     if (!t) return;
+    clearTieIfGroup(t, t.matches[el.dataset.mid]);
     cascadeUndo(t, t.matches[el.dataset.mid]);
     save(); render();
     toast('Результат отменён', '↺');
@@ -4793,6 +4835,7 @@ function decScore(sc) {
   const isGroup = m.bracket && m.bracket.startsWith('g:');
   if (isGroup && t.phase === 'po') return;   // группы закрыты
   if (!isGroup && m.winner) return;          // сетка: сначала «↺ Отменить»
+  if (isGroup) clearTieIfGroup(t, m);
   m.slots[si].score = Math.max(0, (m.slots[si].score || 0) - 1);
   if (isGroup) m.winner = winnerFromScore(t, m);
   save(); render();
