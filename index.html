@@ -179,6 +179,12 @@ textarea{resize:vertical;line-height:1.8}
 .tcard .pbar i{display:block;height:100%;background:linear-gradient(90deg,var(--gold-deep),var(--gold2))}
 .tcard .pbar.full i{background:linear-gradient(90deg,#1E8E68,var(--green))}
 .tcard .row{display:flex;gap:8px;margin-top:8px}
+.livewrap{margin-top:26px}
+.livehdr{font-family:var(--disp);font-weight:600;font-size:13px;letter-spacing:.14em;text-transform:uppercase;color:var(--green);display:flex;align-items:center;gap:9px}
+.livewrap .tlist{margin-top:12px}
+.tcard.lv{--bl:linear-gradient(135deg,var(--green),var(--line) 55%)}
+.tcard .llive{display:inline-flex;align-items:center;gap:5px;font-family:var(--disp);font-size:10px;font-weight:600;letter-spacing:.1em;color:var(--green);vertical-align:middle;margin-left:6px}
+.tcard .llive::before{content:"";width:6px;height:6px;border-radius:50%;background:var(--green);box-shadow:0 0 0 0 rgba(61,220,151,.5);animation:pulse 1.6s infinite}
 .empty{border:1.5px dashed var(--line2);padding:58px 30px;text-align:center;color:var(--muted);margin-top:28px;font-size:15px}
 .empty .big{font-size:42px;display:block;margin-bottom:14px}
 
@@ -1906,7 +1912,7 @@ function exportAll() {
 /* ================= live-синхронизация (Supabase) ================= */
 const SB_URL = 'https://zfskwyfhzwhfogcysojg.supabase.co';
 const SB_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inpmc2t3eWZoendoZm9nY3lzb2pnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODEyNzE4OTMsImV4cCI6MjA5Njg0Nzg5M30.x4ng_armJqnOEvGulEGyUpxqULQcWRU-IllKNjd_dJQ';
-const PUB_BASE = 'https://dubai-project-ex.netlify.app/';
+const PUB_BASE = 'https://exzante.github.io/random-cup/';
 let sb = null, sbLoading = null;
 const liveChannels = {};
 const lastSent = {};
@@ -2193,24 +2199,22 @@ function showShareModal(t) {
     toast('Live отключён');
   };
 }
-async function initLiveFromURL() {
-  const qp = new URLSearchParams(location.search);
-  const code = qp.get('t');
-  if (!code) return;
-  const key = qp.get('k');
+// Открыть живой турнир по коду share: тянем СВЕЖИЙ снимок из облака и показываем.
+// key из ссылки (?k=) → судья; иначе зритель. Сохранённый ключ бережём, чтобы
+// организатор не потерял доступ к своему турниру при повторном открытии.
+async function openLiveByCode(code, key) {
+  if (!code) return false;
   try {
     await loadSB();
     const { data, error } = await sb.from('live_tournaments').select('data').eq('id', code).maybeSingle();
     if (error) throw error;
-    if (!data || !data.data) { uiAlert('Турнир по ссылке не найден — возможно, его уже отключили.'); return; }
+    if (!data || !data.data) { toast('Турнир не найден — возможно, его отключили', '👁'); liveCloudLoad(true); if (view.screen === 'tour' && !curT()) { view = { screen: 'home', tid: null }; render(); } return false; }
     const body = JSON.stringify(data.data);
     lastSent[code] = body;
     let t = DB.tournaments.find(x => x.share && x.share.id === code);
-    // Роль определяет ТОЛЬКО ключ из ссылки: есть k → судья, нет k → зритель.
-    // Сохранённый ключ бережём в данных (чтобы не потерять доступ), но на роль он не влияет.
     const storedKey = (t && t.share && t.share.key) || null;
     const fresh = JSON.parse(body);
-    fresh.share = { id: code, key: key || storedKey, viewer: !key };
+    fresh.share = { id: code, key: key || storedKey, viewer: !(key || storedKey) };
     if (t) DB.tournaments[DB.tournaments.indexOf(t)] = fresh;
     else DB.tournaments.unshift(fresh);
     applyingRemote = true; save(); applyingRemote = false;
@@ -2220,7 +2224,37 @@ async function initLiveFromURL() {
     regLoad();   // свежая база игроков — иначе зритель видит старые MMR в драфте
     if (fresh.phase === 'draft') signupsLoad().then(() => { if (view.screen === 'tour' && curT() && curT().phase === 'draft') render(); });
     toast(fresh.share.viewer ? 'Режим зрителя — сетка обновляется сама' : 'Ты судья — можешь редактировать', fresh.share.viewer ? '👁' : '✏️', true);
-  } catch (e) { uiAlert('Нет связи с сервером синхронизации — проверь интернет.'); }
+    return true;
+  } catch (e) { toast('Нет связи с сервером — показываю, что есть', '⚠️'); return false; }
+}
+async function initLiveFromURL() {
+  const qp = new URLSearchParams(location.search);
+  const code = qp.get('t');
+  if (!code) return;
+  await openLiveByCode(code, qp.get('k'));
+}
+
+/* ===== публичный список ЖИВЫХ турниров для главной (видят ВСЕ, не только организатор) ===== */
+let LIVE_HOME = [];              // [{code, name, data, ts}] — недавно активные live-турниры из облака
+let liveHomeAt = 0;              // троттлинг запросов
+const LIVE_HOME_MAXAGE = 3 * 24 * 3600 * 1000;   // показываем обновлённые за последние 3 дня (свежие)
+async function liveCloudLoad(force) {
+  const now = Date.now();
+  if (!force && now - liveHomeAt < 15000) return;
+  liveHomeAt = now;
+  try {
+    await loadSB();
+    const { data, error } = await sb.from('live_tournaments').select('id,data,updated_at');
+    if (error) throw error;
+    LIVE_HOME = (data || []).map(r => {
+      const d = r.data; if (!d || !d.id) return null;
+      const ts = Date.parse(r.updated_at) || 0;
+      return { code: r.id, name: d.name || 'Турнир', data: d, ts };
+    }).filter(Boolean)
+      .filter(r => now - r.ts < LIVE_HOME_MAXAGE)   // прячем старый мусор (тестовые/забытые шэры)
+      .sort((a, b) => b.ts - a.ts);
+    if (view.screen === 'home') render();
+  } catch (e) { /* тихо — просто не покажем живой список */ }
 }
 
 /* ================= экспорт сетки картинкой ================= */
@@ -3672,6 +3706,30 @@ function screenHome() {
       </div>
     </div>`;
   }).join('');
+  // Живые турниры из облака — видят все. Прячем те, что уже есть локально (организатор
+  // и открытые зрителем показываются в своём списке ниже) — чтобы не было дублей.
+  const liveCards = LIVE_HOME
+    .filter(r => !DB.tournaments.some(x => x.share && x.share.id === r.code))
+    .map(r => {
+      const d = r.data;
+      const entries = Object.values(d.players || {});
+      const isTeams = entries.some(x => x.members && x.members.length);
+      const np = entries.length;
+      const nPlayers = entries.reduce((a, x) => a + (x.members && x.members.length ? x.members.length : 1), 0);
+      let partTxt;
+      if (d.phase === 'draft') { const dt = (d.draftTeams || []).length; partTxt = dt ? `${dt} ${dt === 1 ? 'команда' : 'команд'} · идёт сбор` : 'идёт сбор команд'; }
+      else partTxt = isTeams ? `${np} ${np === 1 ? 'команда' : 'команд'} · ${nPlayers} игроков` : `${np} уч.`;
+      const p = podium(d), pr = progressOf(d);
+      return `<div class="tcard cut lv">
+        <span class="fico">${FMT_ICO[d.format] || '🎮'}</span>
+        <div class="tt">${esc(d.name)}<span class="llive">LIVE</span></div>
+        <div class="meta">${FMT_LABEL[d.format] || ''} · ${partTxt}</div>
+        ${p.first ? `<div class="champline">🏆 ${esc(pname(d, p.first))}</div>` : `<div class="meta">в процессе — ${pr.pct}%</div>`}
+        <div class="pbar ${pr.pct === 100 ? 'full' : ''}"><i style="width:${pr.pct}%"></i></div>
+        <div class="row"><button class="btn sm primary" data-action="openlive" data-code="${r.code}" style="flex:1">👁 Смотреть</button></div>
+      </div>`;
+    }).join('');
+  const liveSection = liveCards ? `<div class="livewrap"><div class="livehdr"><span class="llive" style="margin:0"></span>Идут сейчас</div><div class="tlist">${liveCards}</div></div>` : '';
   const hof = hallOfFame();
   const hofHtml = `<div class="hof cut">
       <div class="hofhead">🏛 Зал славы<span style="flex:1"></span><button class="btn sm ghost" data-action="hofpage" data-tip="Полный зал славы — кто где когда">${hof.length ? 'Весь зал →' : 'Открыть →'}</button></div>
@@ -3697,6 +3755,7 @@ function screenHome() {
       <div class="stat cut"><b>${totalP}</b><span>игроков</span></div>
       <div class="stat cut"><b>${totalM}</b><span>матчей сыграно</span></div>
     </div>` : ''}
+    ${liveSection}
     ${hofHtml}
     ${cards ? `<div class="tlist">${cards}</div>`
       : `<div class="empty"><span class="big">🏟️</span>Пока пусто. Жми <b>«+ Новый турнир»</b> сверху — займёт полминуты.</div>`}
@@ -4334,7 +4393,7 @@ document.addEventListener('click', async e => {
   if (a === 'tbmenu') { tbMenuOpen = !tbMenuOpen; renderTopbar(); return; }
   if (tbMenuOpen && a !== 'tbmenu') { tbMenuOpen = false; renderTopbar(); }
 
-  if (a === 'home') { view = { screen: 'home', tid: null }; render(); }
+  if (a === 'home') { view = { screen: 'home', tid: null }; render(); liveCloudLoad(); }
   else if (a === 'hofpage') { view = { screen: 'hof', tid: null }; render(); }
   else if (a === 'new') { view = { screen: 'create', tid: null }; render(); regLoad(); }
   else if (a === 'help') showHelp();
@@ -4387,7 +4446,13 @@ document.addEventListener('click', async e => {
     if (!t || !isAdmin()) return;
     if (await uiConfirm('Собрать сетку из этих команд? Пул драфта закроется.', { title: 'Сформировать сетку?', ok: 'Собрать' })) draftForm(t);
   }
-  else if (a === 'open') { view = { screen: 'tour', tid: el.dataset.tid }; render(); if (curT() && curT().phase === 'draft') { regLoad(); signupsLoad().then(() => { if (curT() && curT().phase === 'draft') render(); }); } }
+  else if (a === 'openlive') { openLiveByCode(el.dataset.code, null); }
+  else if (a === 'open') {
+    const tt = DB.tournaments.find(x => x.id === el.dataset.tid);
+    view = { screen: 'tour', tid: el.dataset.tid }; render();
+    if (tt && tt.share && tt.share.viewer) openLiveByCode(tt.share.id, null);   // зритель — тянем свежий снимок из облака
+    else if (tt && tt.phase === 'draft') { regLoad(); signupsLoad().then(() => { if (curT() && curT().phase === 'draft') render(); }); }
+  }
   else if (a === 'del') {
     const tt = DB.tournaments.find(x => x.id === el.dataset.tid);
     if (tt && await uiConfirm(`Турнир «${tt.name}» удалится навсегда, вместе с результатами.`, { title: 'Удалить турнир?', ok: 'Удалить', danger: true })) {
@@ -5019,6 +5084,8 @@ if (_joinParam) {
 lobbyLoad();          // для бейджа «вас откликнули» на главной
 ensureLobbyRealtime(); // живое обновление лобби/заявок
 tourCloudLoad();       // восстановить турниры из облака (если вошёл организатором)
+liveCloudLoad(true);   // живой список турниров на главной — видят ВСЕ (не только организатор)
+window.addEventListener('focus', () => { if (view.screen === 'home') liveCloudLoad(); });
 </script>
 </body>
 </html>
