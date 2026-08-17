@@ -546,6 +546,14 @@ canvas.confetti{position:fixed;inset:0;z-index:100;pointer-events:none}
 .ht-p:hover{border-color:var(--gold-deep);color:var(--text)}
 .ht-p.gold{color:var(--gold2);border-color:var(--gold-deep);background:var(--gold-soft)}
 .ht-mem{margin-top:5px;font-size:11px;color:var(--dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ht-fund{flex:none;font-size:11.5px;font-weight:700;color:var(--gold2);white-space:nowrap}
+.ht-p .prz{margin-left:6px;color:var(--gold2);font-weight:800;font-variant-numeric:tabular-nums}
+.hwon{flex:none;margin-left:10px;font-weight:800;font-size:12.5px;color:var(--gold2);font-variant-numeric:tabular-nums;white-space:nowrap}
+.prz{color:var(--gold2);font-weight:800;font-variant-numeric:tabular-nums}
+.podium .champ-name .prz{font-size:.58em;margin-left:9px;letter-spacing:0}
+.podium .minor .prz{margin-left:auto}
+.mrow3{display:flex;gap:8px}
+.mrow3>div{flex:1;min-width:0}
 /* цветные медали в рейтинге */
 .hmed{display:flex;gap:9px;flex:none;margin-left:auto}
 .hmed .m{display:inline-flex;align-items:center;gap:4px;width:34px;justify-content:flex-start;font-weight:800;font-size:13px;font-variant-numeric:tabular-nums}
@@ -980,20 +988,32 @@ function entryHumans(pl) {
   if (pl.members && pl.members.length) return pl.members.slice();
   return pl.name ? [pl.name] : [];
 }
+/* ===== призовые турнира (вводит организатор вручную) ===== */
+function moneyOf(t) { return (t.opts && t.opts.money) || {}; }
+function prizeForPlace(t, place) { return +(moneyOf(t)['p' + place] || 0); }
+function prizeFund(t) {
+  const m = moneyOf(t);
+  return +(m.fund || 0);   // призовой фонд организатор задаёт вручную
+}
+// «300000» → «300 000 ₸». Пусто/0 → ''.
+function fmtMoney(n) { n = Math.round(+n || 0); if (n <= 0) return ''; return n.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ') + ' ₸'; }
 function hallOfFame(limit = 8) {
   const agg = {};
   for (const t of DB.tournaments) {
     const p = podium(t);
-    [['first', 'g'], ['second', 's'], ['third', 'b']].forEach(([k, f]) => {
+    [['first', 'g', 1], ['second', 's', 2], ['third', 'b', 3]].forEach(([k, f, place]) => {
       if (!p[k]) return;
-      entryHumans(t.players[p[k]]).forEach(nm => {
+      const humans = entryHumans(t.players[p[k]]);
+      const share = humans.length ? prizeForPlace(t, place) / humans.length : 0;   // делим приз команды на её игроков
+      humans.forEach(nm => {
         const key = nm.toLowerCase();
-        if (!agg[key]) agg[key] = { name: nm, g: 0, s: 0, b: 0 };
+        if (!agg[key]) agg[key] = { name: nm, g: 0, s: 0, b: 0, won: 0 };
         agg[key][f]++;
+        agg[key].won += share;
       });
     });
   }
-  const all = Object.values(agg).sort((a, b) => b.g - a.g || b.s - a.s || b.b - a.b);
+  const all = Object.values(agg).sort((a, b) => b.won - a.won || b.g - a.g || b.s - a.s || b.b - a.b);
   return limit ? all.slice(0, limit) : all;
 }
 // Чемпионы по турнирам (кто где когда) — только завершённые, свежие сверху.
@@ -1003,34 +1023,40 @@ function hofTournaments() {
     return { name: t.name, date: t.createdAt, fmt: t.format,
       first: pname(t, p.first), firstMembers: entryHumans(t.players[p.first]),
       second: p.second ? pname(t, p.second) : null,
-      third: p.third ? pname(t, p.third) : null };
+      third: p.third ? pname(t, p.third) : null,
+      fund: prizeFund(t), p1: prizeForPlace(t, 1), p2: prizeForPlace(t, 2), p3: prizeForPlace(t, 3) };
   }).sort((a, b) => (b.date || 0) - (a.date || 0));
 }
 function screenHof() {
   const champs = hofTournaments();
   const ranking = hallOfFame(0);
+  const totalWon = ranking.reduce((a, r) => a + r.won, 0);
+  const money = totalWon > 0;
+  const prizeRow = (label, name, amt) => name
+    ? `<span class="ht-p ${label === '🏆' ? 'gold' : ''}" data-action="pstats" data-name="${esc(name)}" data-tip="Статистика">${label} ${esc(name)}${amt ? `<b class="prz">${fmtMoney(amt)}</b>` : ''}</span>`
+    : '';
   return `<div class="hofwrap">
     <div class="hofpage-head">
       <button class="btn sm ghost" data-action="home">← Назад</button>
       <h2>🏛 Зал славы</h2>
-      <span class="note">${champs.length} турнир(ов) · ${ranking.length} с медалями</span>
+      <span class="note">${champs.length} турнир(ов) · ${ranking.length} с медалями${money ? ` · 💰 разыграно ${fmtMoney(totalWon)}` : ''}</span>
     </div>
     <div class="hofcols">
       <div class="hofsec cut">
         <div class="hofsec-h">🏆 Чемпионы турниров</div>
         ${champs.length ? champs.map(c => `<div class="hoftour">
-          <div class="ht-top"><span class="ht-name">${esc(c.name)}</span><span class="ht-date">${new Date(c.date).toLocaleDateString('ru-RU')}</span></div>
+          <div class="ht-top"><span class="ht-name">${esc(c.name)}</span>${c.fund ? `<span class="ht-fund" data-tip="Призовой фонд">💰 ${fmtMoney(c.fund)}</span>` : ''}<span class="ht-date">${new Date(c.date).toLocaleDateString('ru-RU')}</span></div>
           <div class="ht-podium">
-            <span class="ht-p gold" data-action="pstats" data-name="${esc(c.first)}" data-tip="Статистика">🏆 ${esc(c.first)}</span>
-            ${c.second ? `<span class="ht-p" data-action="pstats" data-name="${esc(c.second)}" data-tip="Статистика">🥈 ${esc(c.second)}</span>` : ''}
-            ${c.third ? `<span class="ht-p" data-action="pstats" data-name="${esc(c.third)}" data-tip="Статистика">🥉 ${esc(c.third)}</span>` : ''}
+            ${prizeRow('🏆', c.first, c.p1)}
+            ${prizeRow('🥈', c.second, c.p2)}
+            ${prizeRow('🥉', c.third, c.p3)}
           </div>
           ${c.firstMembers.length > 1 ? `<div class="ht-mem">${c.firstMembers.map(esc).join(' · ')}</div>` : ''}
         </div>`).join('') : '<div class="note" style="padding:14px">Пока нет завершённых турниров.</div>'}
       </div>
       <div class="hofsec cut">
-        <div class="hofsec-h">👑 Рейтинг по медалям</div>
-        <div class="hmedleg"><span class="m g"><span class="dot"></span>1 место</span><span class="m s"><span class="dot"></span>2 место</span><span class="m br"><span class="dot"></span>3 место</span></div>
+        <div class="hofsec-h">👑 Рейтинг ${money ? '— медали и выигрыш' : 'по медалям'}</div>
+        <div class="hmedleg"><span class="m g"><span class="dot"></span>1 место</span><span class="m s"><span class="dot"></span>2 место</span><span class="m br"><span class="dot"></span>3 место</span>${money ? '<span class="m" style="color:var(--gold2)">💰 выигрыш</span>' : ''}</div>
         ${ranking.length ? ranking.map((r, i) => `<div class="hofrow ${i < 3 ? 'r' + (i + 1) : ''}" data-action="pstats" data-name="${esc(r.name)}" data-tip="Статистика игрока">
           <span class="hofn">${i + 1}</span>${avatarByName(r.name)}<span class="hofname">${esc(r.name)}</span>
           <span class="hmed">
@@ -1038,6 +1064,7 @@ function screenHof() {
             <span class="m s ${r.s ? '' : 'zero'}"><span class="dot"></span>${r.s || 0}</span>
             <span class="m br ${r.b ? '' : 'zero'}"><span class="dot"></span>${r.b || 0}</span>
           </span>
+          ${r.won > 0 ? `<span class="hwon" data-tip="Всего выиграл (доля от призовых команды)">${fmtMoney(r.won)}</span>` : ''}
         </div>`).join('') : '<div class="note" style="padding:14px">Пока нет медалей.</div>'}
       </div>
     </div>
@@ -3759,6 +3786,7 @@ function screenHome() {
           <span class="m s ${r.s ? '' : 'zero'}"><span class="dot"></span>${r.s || 0}</span>
           <span class="m br ${r.b ? '' : 'zero'}"><span class="dot"></span>${r.b || 0}</span>
         </span>
+        ${r.won > 0 ? `<span class="hwon" data-tip="Всего выиграл">${fmtMoney(r.won)}</span>` : ''}
       </div>`).join('') : '<div class="note" style="padding:6px 2px">Пока пусто — сыграйте турнир, и чемпионы появятся тут.</div>'}
     </div>`;
   return `<div class="hero">
@@ -3918,12 +3946,14 @@ function coachHtml() {
 function podiumHtml(t) {
   const p = podium(t);
   if (!p.first) return '';
+  const pr1 = fmtMoney(prizeForPlace(t, 1)), pr2 = fmtMoney(prizeForPlace(t, 2)), pr3 = fmtMoney(prizeForPlace(t, 3));
+  const fund = fmtMoney(prizeFund(t));
   return `<div class="podium cut">
     <span class="pchamp">${avatar(t, p.first, true)}
-      <span><span class="eyebrow">Чемпион турнира</span><span class="champ-name">${esc(pname(t, p.first))}</span></span>
+      <span><span class="eyebrow">Чемпион турнира${fund ? ` · призовой фонд ${fund}` : ''}</span><span class="champ-name">${esc(pname(t, p.first))}${pr1 ? ` <b class="prz">${pr1}</b>` : ''}</span></span>
     </span>
-    ${p.second ? `<span class="minor">🥈 ${avatar(t, p.second)} <b>${esc(pname(t, p.second))}</b></span>` : ''}
-    ${p.third ? `<span class="minor">🥉 ${avatar(t, p.third)} <b>${esc(pname(t, p.third))}</b></span>` : ''}
+    ${p.second ? `<span class="minor">🥈 ${avatar(t, p.second)} <b>${esc(pname(t, p.second))}</b>${pr2 ? `<span class="prz">${pr2}</span>` : ''}</span>` : ''}
+    ${p.third ? `<span class="minor">🥉 ${avatar(t, p.third)} <b>${esc(pname(t, p.third))}</b>${pr3 ? `<span class="prz">${pr3}</span>` : ''}</span>` : ''}
   </div>`;
 }
 
@@ -3935,8 +3965,13 @@ function tourInfoHtml(t) {
   if (i.venue) chips.push(`<span>📍 ${linkify(i.venue)}</span>`);
   if (i.slots) chips.push(`<span>👥 ${esc(i.slots)}</span>`);
   if (t.opts && t.opts.mmrCap) chips.push(`<span>🎚 лимит ${t.opts.mmrCap} MMR</span>`);
-  if (i.prize) chips.push(`<span class="prize">🏆 ${esc(i.prize)}</span>`);
-  if (i.entry) chips.push(`<span>💵 ${esc(i.entry)}</span>`);
+  const M = moneyOf(t), fund = fmtMoney(M.fund), fee = fmtMoney(M.fee);
+  if (fund) chips.push(`<span class="prize" data-tip="Призовой фонд">🏆 фонд ${fund}</span>`);
+  else if (i.prize) chips.push(`<span class="prize">🏆 ${esc(i.prize)}</span>`);
+  const brk = [prizeForPlace(t, 1), prizeForPlace(t, 2), prizeForPlace(t, 3)];
+  if (brk.some(x => x > 0)) chips.push(`<span data-tip="Призы по местам">🥇 ${fmtMoney(brk[0]) || '—'} · 🥈 ${fmtMoney(brk[1]) || '—'} · 🥉 ${fmtMoney(brk[2]) || '—'}</span>`);
+  if (fee) chips.push(`<span data-tip="Взнос с участника">💵 взнос ${fee}</span>`);
+  else if (i.entry) chips.push(`<span>💵 ${esc(i.entry)}</span>`);
   const links = [];
   if (i.contact) {
     const c = i.contact.trim();
@@ -3962,14 +3997,21 @@ function tourInfoHtml(t) {
 function infoEditModal() {
   const t = curT(); if (!t || !canEdit(t)) return;
   const i = t.opts.info || {};
+  const m = t.opts.money || {};
   const fld = (id, val, ph) => `<input id="${id}" value="${esc(val || '')}" placeholder="${ph}">`;
   const ov = openModal(`
     <div class="mtitle">Инфо турнира</div>
     <div class="mbody pedit" style="text-align:left;max-height:70vh;overflow:auto">
       <label class="flbl">Когда</label>${fld('tiWhen', i.when, 'сб, 20:00')}
       <label class="flbl">Где</label>${fld('tiVenue', i.venue, 'Discord / клуб / адрес')}
-      <label class="flbl">Приз / что на кону</label>${fld('tiPrize', i.prize, 'напр. 20 000 ₸ / буткемп')}
-      <label class="flbl">Взнос за участие</label>${fld('tiEntry', i.entry, 'напр. 2000 ₸ с команды / бесплатно')}
+      <div class="flbl" style="margin-top:10px;color:var(--gold2);font-weight:600;letter-spacing:.04em">💰 Призовые (идут в зал славы)</div>
+      <label class="flbl">Призовой фонд, ₸</label><input id="tiFund" type="number" inputmode="numeric" value="${m.fund || ''}" placeholder="напр. 500000">
+      <label class="flbl">Взнос с участника, ₸</label><input id="tiFee" type="number" inputmode="numeric" value="${m.fee || ''}" placeholder="напр. 50000">
+      <div class="mrow3">
+        <div><label class="flbl">🥇 1 место, ₸</label><input id="tiP1" type="number" inputmode="numeric" value="${m.p1 || ''}" placeholder="0"></div>
+        <div><label class="flbl">🥈 2 место, ₸</label><input id="tiP2" type="number" inputmode="numeric" value="${m.p2 || ''}" placeholder="0"></div>
+        <div><label class="flbl">🥉 3 место, ₸</label><input id="tiP3" type="number" inputmode="numeric" value="${m.p3 || ''}" placeholder="0"></div>
+      </div>
       <label class="flbl">Слотов (команд/игроков)</label>${fld('tiSlots', i.slots, 'напр. 8 команд')}
       <label class="flbl">Лимит MMR команды</label><input id="tiCap" type="number" inputmode="numeric" value="${t.opts.mmrCap || ''}" placeholder="без лимита">
       <label class="flbl">Организатор / контакт</label>${fld('tiContact', i.contact, '@ник или +7… (WhatsApp)')}
@@ -3980,8 +4022,11 @@ function infoEditModal() {
   ov.querySelector('#tiCancel').onclick = () => closeModal(ov);
   ov.onclick = e => { if (e.target === ov && ov._downSelf) closeModal(ov); };
   const v = id => ov.querySelector('#' + id).value.trim();
+  const num = id => parseInt(ov.querySelector('#' + id).value, 10) || 0;
   ov.querySelector('#tiSave').onclick = () => {
-    t.opts.info = { when: v('tiWhen'), venue: v('tiVenue'), prize: v('tiPrize'), entry: v('tiEntry'), slots: v('tiSlots'), contact: v('tiContact'), stream: v('tiStream'), rules: v('tiRules') };
+    // Старые текстовые prize/entry сохраняем как есть (не теряем данные), деньги теперь числами.
+    t.opts.info = { when: v('tiWhen'), venue: v('tiVenue'), prize: i.prize || '', entry: i.entry || '', slots: v('tiSlots'), contact: v('tiContact'), stream: v('tiStream'), rules: v('tiRules') };
+    t.opts.money = { fund: num('tiFund'), fee: num('tiFee'), p1: num('tiP1'), p2: num('tiP2'), p3: num('tiP3') };
     t.opts.mmrCap = parseInt(v('tiCap'), 10) || 0;
     save(); closeModal(ov); render(); toast('Инфо сохранено', '✓');
   };
