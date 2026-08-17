@@ -2388,6 +2388,10 @@ async function initLiveFromURL() {
 
 /* ===== публичный список ЖИВЫХ турниров для главной (видят ВСЕ, не только организатор) ===== */
 let LIVE_HOME = [];              // [{code, name, data, ts}] — недавно активные live-турниры из облака
+// Спрятанные организатором коды (у которых нет локального ключа для полного отключения).
+let HIDDEN_LIVE = new Set();
+try { HIDDEN_LIVE = new Set(JSON.parse(localStorage.getItem('rc_hidden_live') || '[]')); } catch (e) {}
+function hideLive(code) { HIDDEN_LIVE.add(code); try { localStorage.setItem('rc_hidden_live', JSON.stringify([...HIDDEN_LIVE])); } catch (e) {} }
 let liveHomeAt = 0;              // троттлинг запросов
 const LIVE_HOME_MAXAGE = 3 * 24 * 3600 * 1000;   // показываем обновлённые за последние 3 дня (свежие)
 async function liveCloudLoad(force) {
@@ -2403,7 +2407,7 @@ async function liveCloudLoad(force) {
       const ts = Date.parse(r.updated_at) || 0;
       return { code: r.id, name: d.name || 'Турнир', data: d, ts, created: d.createdAt || 0 };
     }).filter(Boolean)
-      .filter(r => now - r.ts < LIVE_HOME_MAXAGE)   // фильтр по активности: прячем старый мусор (тестовые/забытые шэры)
+      .filter(r => now - r.ts < LIVE_HOME_MAXAGE && !HIDDEN_LIVE.has(r.code))   // свежие и не спрятанные
       .sort((a, b) => b.created - a.created || b.ts - a.ts);   // сверху — созданные позже (последний регнутый первым)
     if (view.screen === 'home') render();
   } catch (e) { /* тихо — просто не покажем живой список */ }
@@ -3881,7 +3885,7 @@ function screenHome() {
         <div class="meta">${FMT_LABEL[d.format] || ''} · ${partTxt}</div>
         ${p.first ? `<div class="champline">🏆 ${esc(pname(d, p.first))}</div>` : `<div class="meta">в процессе — ${pr.pct}%</div>`}
         <div class="pbar ${pr.pct === 100 ? 'full' : ''}"><i style="width:${pr.pct}%"></i></div>
-        <div class="row"><button class="btn sm primary" data-action="openlive" data-code="${r.code}" style="flex:1">👁 Смотреть</button></div>
+        <div class="row"><button class="btn sm primary" data-action="openlive" data-code="${r.code}" style="flex:1">👁 Смотреть</button>${isAdmin() ? `<button class="btn sm icon ghost" data-action="livehide" data-code="${r.code}" data-tip="Убрать из «Идут сейчас» (выключит live, если это твой турнир)">🗑</button>` : ''}</div>
       </div>`;
     }).join('');
   const liveSection = liveCards ? `<div class="livewrap"><div class="livehdr"><span class="llive" style="margin:0"></span>Идут сейчас</div><div class="tlist">${liveCards}</div></div>` : '';
@@ -4638,6 +4642,24 @@ document.addEventListener('click', async e => {
     if (await uiConfirm('Собрать сетку из этих команд? Пул драфта закроется.', { title: 'Сформировать сетку?', ok: 'Собрать' })) draftForm(t);
   }
   else if (a === 'openlive') { openLiveByCode(el.dataset.code, null); }
+  else if (a === 'livehide') {
+    if (!isAdmin()) return;
+    const code = el.dataset.code;
+    if (!await uiConfirm('Убрать турнир из «Идут сейчас»? Если это твой live — он выключится для всех.', { title: 'Убрать из списка?', ok: 'Убрать', danger: true })) return;
+    // Если у нас есть локальная копия с ключом — по-настоящему выключаем live в облаке.
+    const loc = DB.tournaments.find(x => x.share && x.share.id === code && x.share.key && !x.share.viewer);
+    if (loc) {
+      try { await loadSB(); await sb.rpc('delete_tournament', { p_id: code, p_key: loc.share.key }); } catch (er) {}
+      if (liveChannels[code] && liveChannels[code] !== 'pending') { try { sb.removeChannel(liveChannels[code]); } catch (er) {} }
+      delete liveChannels[code]; delete lastSent[code];
+      loc.share = null; applyingRemote = true; save(); applyingRemote = false;
+    } else {
+      hideLive(code);   // ключа нет (осиротевший шэр) — прячем хотя бы у себя
+    }
+    LIVE_HOME = LIVE_HOME.filter(r => r.code !== code);
+    render();
+    toast('Убрано из «Идут сейчас»');
+  }
   else if (a === 'open') {
     const tt = DB.tournaments.find(x => x.id === el.dataset.tid);
     view = { screen: 'tour', tid: el.dataset.tid }; render();
@@ -4647,7 +4669,19 @@ document.addEventListener('click', async e => {
   else if (a === 'del') {
     const tt = DB.tournaments.find(x => x.id === el.dataset.tid);
     if (tt && await uiConfirm(`Турнир «${tt.name}» удалится навсегда, вместе с результатами.`, { title: 'Удалить турнир?', ok: 'Удалить', danger: true })) {
+      // Если это живой турнир и у нас есть судейский ключ — выключаем и облачную live-копию,
+      // иначе он вернётся в «Идут сейчас».
+      if (tt.share && tt.share.id) {
+        const code = tt.share.id;
+        if (tt.share.key && !tt.share.viewer) {
+          try { await loadSB(); await sb.rpc('delete_tournament', { p_id: code, p_key: tt.share.key }); } catch (er) {}
+        }
+        if (liveChannels[code] && liveChannels[code] !== 'pending') { try { sb.removeChannel(liveChannels[code]); } catch (er) {} }
+        delete liveChannels[code]; delete lastSent[code];
+        LIVE_HOME = LIVE_HOME.filter(r => r.code !== code);
+      }
       DB.tournaments = DB.tournaments.filter(x => x.id !== el.dataset.tid);
+      ARCHIVE = ARCHIVE.filter(x => x.id !== el.dataset.tid);
       delArchive(el.dataset.tid);
       save(); render();
       toast('Турнир удалён');
