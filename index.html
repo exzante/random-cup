@@ -5469,11 +5469,11 @@ if (_joinParam) {
     await Promise.all([regLoad(), signupsLoad()]);
     if (view.screen === 'join') render();
   })();
-} else if (_hofParam) {
+} else if (_hofParam !== null) {
   view = { screen: 'hof', tid: null };
   render();
   regLoad();            // имена/аватары игроков для зала славы
-} else if (_rateParam) {
+} else if (_rateParam !== null) {
   view = { screen: 'rate', tid: null };
   render();
   regLoad().then(() => { mmrMineLoad(); }); mmrAggLoad();
