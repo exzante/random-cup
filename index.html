@@ -1045,19 +1045,23 @@ function allTournaments() {
 }
 function hallOfFame(limit = 8) {
   const agg = {};
+  const award = (t, pid, f, amount) => {
+    const humans = entryHumans(t.players[pid]);
+    const share = humans.length ? amount / humans.length : 0;   // делим приз команды на её игроков
+    humans.forEach(nm => {
+      const key = nm.toLowerCase();
+      if (!agg[key]) agg[key] = { name: nm, g: 0, s: 0, b: 0, won: 0 };
+      agg[key][f]++;
+      agg[key].won += share;
+    });
+  };
   for (const t of allTournaments()) {
     const p = podium(t);
-    [['first', 'g', 1], ['second', 's', 2], ['third', 'b', 3]].forEach(([k, f, place]) => {
-      if (!p[k]) return;
-      const humans = entryHumans(t.players[p[k]]);
-      const share = humans.length ? prizeForPlace(t, place) / humans.length : 0;   // делим приз команды на её игроков
-      humans.forEach(nm => {
-        const key = nm.toLowerCase();
-        if (!agg[key]) agg[key] = { name: nm, g: 0, s: 0, b: 0, won: 0 };
-        agg[key][f]++;
-        agg[key].won += share;
-      });
-    });
+    if (p.first) award(t, p.first, 'g', prizeForPlace(t, 1));
+    if (p.second) award(t, p.second, 's', prizeForPlace(t, 2));
+    // Бронза может быть на двоих (3–4 место) — приз за 3-е делим между ними.
+    const perBronze = p.bronze.length ? prizeForPlace(t, 3) / p.bronze.length : 0;
+    p.bronze.forEach(pid => award(t, pid, 'b', perBronze));
   }
   const all = Object.values(agg).sort((a, b) => b.won - a.won || b.g - a.g || b.s - a.s || b.b - a.b);
   return limit ? all.slice(0, limit) : all;
@@ -1070,6 +1074,7 @@ function hofTournaments() {
       first: pname(t, p.first), firstMembers: entryHumans(t.players[p.first]),
       second: p.second ? pname(t, p.second) : null,
       third: p.third ? pname(t, p.third) : null,
+      bronze: p.bronze.map(pid => pname(t, pid)),
       fund: prizeFund(t), p1: prizeForPlace(t, 1), p2: prizeForPlace(t, 2), p3: prizeForPlace(t, 3) };
   }).sort((a, b) => (b.date || 0) - (a.date || 0));
 }
@@ -1141,7 +1146,7 @@ function screenHof() {
           <div class="ht-podium">
             ${prizeRow('🏆', c.first, c.p1)}
             ${prizeRow('🥈', c.second, c.p2)}
-            ${prizeRow('🥉', c.third, c.p3)}
+            ${c.bronze.map(nm => prizeRow('🥉', nm, c.bronze.length ? c.p3 / c.bronze.length : c.p3)).join('')}
           </div>
           ${c.firstMembers.length > 1 ? `<div class="ht-mem">${c.firstMembers.map(esc).join(' · ')}</div>` : ''}
         </div>`).join('') : '<div class="note" style="padding:14px">Пока нет завершённых турниров.</div>'}
@@ -1567,7 +1572,7 @@ function resetPO(t) {
 
 /* ================= podium / progress ================= */
 function podium(t) {
-  const out = { first: null, second: null, third: null };
+  const out = { first: null, second: null, third: null, bronze: [] };
   const M = id => id ? t.matches[id] : null;
   if (t.format === 'double') {
     const gf = M(t.gfId), gf2 = M(t.gf2Id);
@@ -1581,7 +1586,14 @@ function podium(t) {
     const f = M(t.finalId);
     if (f && f.winner) { out.first = f.winner; out.second = loserOf(f); }
     const th = M(t.thirdId);
-    if (th && th.winner) out.third = th.winner;
+    if (th && th.winner) {
+      out.third = th.winner;                    // отдельный матч за 3-е решает бронзу
+    } else if (!t.thirdId && t.finalId) {
+      // Без матча за 3-е: оба проигравших полуфинала — бронза (3–4 место), чтобы она не пустовала.
+      out.bronze = Object.values(t.matches)
+        .filter(m => m.wTo && m.wTo.mid === t.finalId && m.winner)   // полуфиналы (ведут в финал)
+        .map(loserOf).filter(pid => pid && pid !== 'BYE');
+    }
   } else if (t.format === 'rr') {
     const g = t.groups[0];
     const total = groupMatches(t, g).length;
@@ -1594,6 +1606,10 @@ function podium(t) {
     }
   }
   for (const k of ['first', 'second', 'third']) if (out[k] === 'BYE') out[k] = null;
+  // Единый список бронзы: явные 3–4 места ИЛИ одиночная третья (матч за 3-е / rr / double).
+  if (!out.bronze.length && out.third) out.bronze = [out.third];
+  out.bronze = out.bronze.filter(pid => pid && pid !== 'BYE');
+  if (!out.third && out.bronze.length) out.third = out.bronze[0];
   return out;
 }
 function gf2Needed(t) {
@@ -1844,7 +1860,7 @@ function playerStats(name) {
     let res = '—';
     if (p.first && pids.includes(p.first)) { st.g++; res = '🥇'; }
     else if (p.second && pids.includes(p.second)) { st.s++; res = '🥈'; }
-    else if (p.third && pids.includes(p.third)) { st.b++; res = '🥉'; }
+    else if (p.bronze.some(pid => pids.includes(pid))) { st.b++; res = '🥉'; }
     st.rows.push({ tn: t.name, res });
   }
   return st;
@@ -4048,7 +4064,7 @@ function podiumHtml(t) {
       <span><span class="eyebrow">Чемпион турнира${fund ? ` · призовой фонд ${fund}` : ''}</span><span class="champ-name">${esc(pname(t, p.first))}${pr1 ? ` <b class="prz">${pr1}</b>` : ''}</span></span>
     </span>
     ${p.second ? `<span class="minor">🥈 ${avatar(t, p.second)} <b>${esc(pname(t, p.second))}</b>${pr2 ? `<span class="prz">${pr2}</span>` : ''}</span>` : ''}
-    ${p.third ? `<span class="minor">🥉 ${avatar(t, p.third)} <b>${esc(pname(t, p.third))}</b>${pr3 ? `<span class="prz">${pr3}</span>` : ''}</span>` : ''}
+    ${p.bronze.map(pid => { const amt = fmtMoney(p.bronze.length ? prizeForPlace(t, 3) / p.bronze.length : prizeForPlace(t, 3)); return `<span class="minor">🥉 ${avatar(t, pid)} <b>${esc(pname(t, pid))}</b>${amt ? `<span class="prz">${amt}</span>` : ''}</span>`; }).join('')}
   </div>`;
 }
 
