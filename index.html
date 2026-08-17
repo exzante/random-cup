@@ -2401,10 +2401,10 @@ async function liveCloudLoad(force) {
     LIVE_HOME = (data || []).map(r => {
       const d = r.data; if (!d || !d.id) return null;
       const ts = Date.parse(r.updated_at) || 0;
-      return { code: r.id, name: d.name || 'Турнир', data: d, ts };
+      return { code: r.id, name: d.name || 'Турнир', data: d, ts, created: d.createdAt || 0 };
     }).filter(Boolean)
-      .filter(r => now - r.ts < LIVE_HOME_MAXAGE)   // прячем старый мусор (тестовые/забытые шэры)
-      .sort((a, b) => b.ts - a.ts);
+      .filter(r => now - r.ts < LIVE_HOME_MAXAGE)   // фильтр по активности: прячем старый мусор (тестовые/забытые шэры)
+      .sort((a, b) => b.created - a.created || b.ts - a.ts);   // сверху — созданные позже (последний регнутый первым)
     if (view.screen === 'home') render();
   } catch (e) { /* тихо — просто не покажем живой список */ }
 }
