@@ -802,6 +802,29 @@ canvas.confetti{position:fixed;inset:0;z-index:100;pointer-events:none}
 .prow .pnk{font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .prow .pmmr{font-family:var(--disp);font-weight:700;font-size:16px;color:var(--gold2);font-variant-numeric:tabular-nums;display:flex;flex-direction:column;align-items:flex-end;line-height:1;flex-shrink:0}
 .prow .pmmr small{font-size:8px;letter-spacing:.2em;color:var(--dim);font-weight:600;margin-top:2px}
+.pmmr.nar{color:#7FC8A0}
+.pcm.nar{color:#7FC8A0;margin-left:5px}
+.profmmr.nar{color:#7FC8A0;margin-left:14px}
+/* народный MMR — страница оценок */
+.ratewrap{max-width:760px;margin:18px auto 70px;padding:0 14px}
+.ratehead{display:flex;align-items:center;gap:14px;margin-bottom:14px;flex-wrap:wrap}
+.ratehead h2{font-family:var(--disp);font-size:22px;letter-spacing:.05em;text-transform:uppercase;color:var(--gold2);margin:0}
+.ratenote{--c:10px;padding:12px 15px;color:var(--muted);font-size:13px;line-height:1.5;margin-bottom:16px}
+.ratelogin{--c:12px;max-width:380px;margin:30px auto;padding:22px}
+.ratelogin .rl-t{font-family:var(--disp);font-weight:600;font-size:15px;letter-spacing:.08em;text-transform:uppercase;color:var(--gold2);margin-bottom:6px}
+.ratelogin input{width:100%;margin-top:8px}
+.ralist{display:flex;flex-direction:column;gap:8px}
+.rarow{--c:10px;--bl:var(--line);display:flex;align-items:center;gap:12px;padding:10px 14px}
+.rarow .pcol{flex:1;min-width:0;display:flex;flex-direction:column}
+.rarow .ra-off,.rarow .ra-agg{font-family:var(--disp);font-weight:700;font-size:15px;font-variant-numeric:tabular-nums;display:flex;flex-direction:column;align-items:flex-end;line-height:1;flex-shrink:0}
+.rarow .ra-off{color:var(--muted)}
+.rarow .ra-agg{color:#7FC8A0}
+.rarow .ra-agg.none{color:var(--dim);font-weight:600}
+.rarow .ra-off small,.rarow .ra-agg small{font-size:8px;letter-spacing:.12em;color:var(--dim);font-weight:600;margin-top:2px}
+.rarow .ra-in{width:96px;flex-shrink:0;text-align:center;font-weight:700;font-family:var(--disp);font-size:16px;color:var(--gold2)}
+.mdlist{display:flex;flex-direction:column;gap:6px;max-height:52vh;overflow:auto}
+.mdrow{display:flex;justify-content:space-between;padding:7px 10px;border:1px solid var(--line);background:var(--panel2)}
+.mdrow b{color:var(--gold2);font-variant-numeric:tabular-nums}
 .prow .ppeak{font-size:10px;color:var(--muted);background:var(--panel2);border:1px solid var(--line);padding:2px 8px;white-space:nowrap;flex-shrink:0}
 .prow .ptitle{font-size:11px;color:var(--gold2);font-weight:700;white-space:nowrap;flex-shrink:0}
 .prow .ptools{display:inline-flex;gap:1px;opacity:0;transition:opacity .12s;flex-shrink:0}
@@ -2197,6 +2220,49 @@ async function regDeleteRemote(id) {
   if (error) throw error;
 }
 
+/* ===== народный MMR (игроки оценивают друг друга, берём медиану) ===== */
+let MMR_AGG = {};   // target_id -> {med, n, lo, hi}
+let MMR_MINE = {};  // target_id -> mmr (мои оценки, когда вошёл игроком)
+async function mmrAggLoad() {
+  try {
+    await loadSB();
+    const { data, error } = await sb.rpc('rc_mmr_agg');
+    if (error) throw error;
+    const m = {};
+    (data || []).forEach(r => { m[r.target_id] = { med: Math.round(r.med), n: r.n, lo: r.lo, hi: r.hi }; });
+    MMR_AGG = m;
+    if (['players', 'profile', 'rate'].includes(view.screen)) render();
+  } catch (e) { /* нет связи / не накатан SQL — тихо */ }
+}
+async function mmrMineLoad() {
+  MMR_MINE = {};
+  if (!isPlayer()) return;
+  try {
+    await loadSB();
+    const { data, error } = await sb.rpc('rc_mmr_mine', { p_username: rcPlayer.username, p_password: rcPlayer.pass });
+    if (error) throw error;
+    (data || []).forEach(r => { MMR_MINE[r.target_id] = r.mmr; });
+    if (view.screen === 'rate') render();
+  } catch (e) {}
+}
+async function mmrVote(target, raw) {
+  if (!isPlayer()) { uiAlert('Сначала войди своим ником и паролем.'); return; }
+  try {
+    await loadSB();
+    if (raw == null || String(raw).trim() === '') {
+      const { error } = await sb.rpc('rc_mmr_unvote', { p_username: rcPlayer.username, p_password: rcPlayer.pass, p_target: target });
+      if (error) throw error;
+      delete MMR_MINE[target];
+    } else {
+      const v = Math.max(0, Math.min(15000, Math.round(+raw)));
+      const { error } = await sb.rpc('rc_mmr_vote', { p_username: rcPlayer.username, p_password: rcPlayer.pass, p_target: target, p_mmr: v });
+      if (error) throw error;
+      MMR_MINE[target] = v;
+    }
+    mmrAggLoad();   // пересчитать медиану
+  } catch (e) { toast('Не сохранилось — проверь вход/связь', '⚠️'); }
+}
+
 /* ===== облачный бэкап турниров (архив) ===== */
 const archiveTimers = {};
 function schedulePushArchive(t) {
@@ -3112,6 +3178,7 @@ function render() {
   else if (view.screen === 'create') app.innerHTML = screenCreate();
   else if (view.screen === 'players') app.innerHTML = screenPlayers();
   else if (view.screen === 'profile') app.innerHTML = screenProfile(view.pid);
+  else if (view.screen === 'rate') app.innerHTML = screenRate();
   else if (view.screen === 'lobbies') app.innerHTML = screenLobbies();
   else app.innerHTML = screenTour();
   [...app.querySelectorAll('.bsec')].forEach((s, i) => {
@@ -3209,8 +3276,10 @@ function renderTopbar() {
       ? `<button class="btn sm ghost" data-action="home">← На главную</button>`
       : view.screen === 'profile'
       ? `<button class="btn sm ghost" data-action="players">← К игрокам</button>`
+      : view.screen === 'rate'
+      ? `<button class="btn sm ghost" data-action="players">← К игрокам</button>`
       : `${addBtn}<button class="btn sm ghost" data-action="home">← Все турниры</button>`}
-    ${['home', 'players', 'profile', 'lobbies', 'hof'].includes(view.screen) ? loginBtn() : ''}
+    ${['home', 'players', 'profile', 'lobbies', 'hof', 'rate'].includes(view.screen) ? loginBtn() : ''}
     ${view.screen === 'home' ? `<button class="btn primary sm" data-action="new">+ Новый турнир</button>` : ''}
     ${tbMenuHtml()}
   </div>`;
@@ -3380,7 +3449,7 @@ async function goingSet(pid, on) {
 function posChipHtml(p) {
   const multi = posArr(p).length > 1;
   return `<button class="poschip cut ${multi ? 'multi' : ''}" data-action="pprofile" data-pid="${p.id}" data-search="${esc((p.name + ' ' + (p.nick || '')).toLowerCase())}" data-tip="${multi ? 'Играет на нескольких позициях' : ''}">
-    ${avatarByName(p.nick || p.name)}<span class="pcn">${esc(p.nick || p.name)}</span>${p.mmr != null ? `<span class="pcm">${p.mmr}</span>` : ''}
+    ${avatarByName(p.nick || p.name)}<span class="pcn">${esc(p.nick || p.name)}</span>${p.mmr != null ? `<span class="pcm">${p.mmr}</span>` : ''}${(() => { const a = MMR_AGG[p.id]; return a ? `<span class="pcm nar" data-tip="Народный MMR ≈${a.med} · ${a.n} оценок">≈${a.med}</span>` : ''; })()}
   </button>`;
 }
 function posRowsHtml(list) {
@@ -3449,6 +3518,7 @@ function screenPlayers() {
       ${avatarByName(p.nick || p.name)}
       <div class="pcol"><span class="pnm">${esc(p.name)}${pos}</span>${p.nick ? `<span class="pnk">@${esc(p.nick)}</span>` : ''}</div>
       ${tt}${trend}
+      ${(() => { const a = MMR_AGG[p.id]; return a ? `<span class="pmmr nar" data-tip="Народный MMR — медиана ${a.n} оценок, разброс ${a.lo}–${a.hi}">≈${a.med}<small>народ.</small></span>` : ''; })()}
       <span class="pmmr">${p.mmr != null ? p.mmr : '—'}<small>MMR</small></span>
       ${wa}${tools}
     </div>`;
@@ -3461,6 +3531,7 @@ function screenPlayers() {
       <select id="regMmr" class="regmmrsel" data-tip="Фильтр по рейтингу">${[[0, 'Любой MMR'], [2000, '2000+'], [4000, '4000+'], [6000, '6000+'], [8000, '8000+'], [10000, '10000+']].map(([v, l]) => `<option value="${v}" ${regMmrMin === v ? 'selected' : ''}>${l}</option>`).join('')}</select>
       <span class="segbtns" data-tip="Фильтр по позициям">${[['all', 'Все'], ['one', '1 поз.'], ['flex', 'Флекс']].map(([v, l]) => `<button class="btn sm ${regPosFilter === v ? 'primary' : 'ghost'}" data-action="posfilter" data-val="${v}">${l}</button>`).join('')}</span>
       <button class="btn sm ghost" data-action="regview" data-tip="Переключить вид">${byPos ? '☰ Списком' : '⛃ По позициям'}</button>
+      <button class="btn sm ghost" data-action="ratepage" data-tip="Народный MMR — оцени игроков, берётся медиана">🗳 Оценить</button>
       <input id="pSearch" class="regsearch" placeholder="Поиск по имени или нику…">
       ${admin ? `<button class="btn primary sm" data-action="pedit" data-tip="Добавить нового игрока">＋ Игрок</button>` : ''}
     </div>
@@ -3661,7 +3732,9 @@ function screenProfile(pid) {
         </div>
       </div>
       <div class="profmmr"><b>${p.mmr != null ? p.mmr : '—'}</b><span>MMR${peak > (p.mmr || 0) ? ` · пик ${peak}` : ''}</span></div>
+      ${(() => { const a = MMR_AGG[p.id]; return a ? `<div class="profmmr nar" data-tip="Медиана оценок сообщества · ${a.n} голосов · разброс ${a.lo}–${a.hi}"><b>≈${a.med}</b><span>народный · ${a.n}</span></div>` : ''; })()}
       <div class="profact">
+        ${admin && MMR_AGG[p.id] ? `<button class="btn sm ghost" data-action="mmrdetail" data-pid="${p.id}" data-tip="Кто как оценил — аудит накруток">👁 Оценки</button>` : ''}
         ${p.phone ? `<button class="btn sm" data-action="wa" data-phone="${esc(p.phone)}" data-tip="${esc(p.phone)}">🟢 WhatsApp</button>` : ''}
         ${admin ? `<button class="btn sm ghost" data-action="managelogin" data-pid="${p.id}" data-tip="Включить/сменить вход игроку">🔑 Вход игрока</button>` : ''}
         ${admin ? `<button class="btn sm ghost" data-action="pedit" data-pid="${p.id}">✎ Изменить</button>` : ''}
@@ -3682,6 +3755,64 @@ function screenProfile(pid) {
         : `<span class="note">Пока не участвовал в турнирах.</span>`}
     </div>
   </div>`;
+}
+/* ================= народный MMR — страница оценок ================= */
+function screenRate() {
+  if (!isPlayer()) {
+    return `<div class="ratewrap">
+      <div class="ratehead"><button class="btn sm ghost" data-action="players">← База</button><h2>🗳 Народный MMR</h2></div>
+      <div class="ratelogin cut">
+        <div class="rl-t">Войди своим аккаунтом</div>
+        <div class="note" style="margin-bottom:12px">Ник и пароль выдаёт организатор. Нет доступа — напиши ему, включит вход.</div>
+        <input id="rlUser" placeholder="твой ник (логин)" autocomplete="username">
+        <input id="rlPass" type="password" placeholder="пароль" autocomplete="current-password">
+        <button class="btn primary" data-action="ratelogin" style="width:100%;margin-top:10px">Войти и оценивать</button>
+      </div>
+    </div>`;
+  }
+  const me = myId();
+  const list = regPlayers().filter(p => p.id !== me);
+  const mineName = (regById(me) || {}).name || rcPlayer.username;
+  const rows = list.map(p => {
+    const a = MMR_AGG[p.id], mine = MMR_MINE[p.id];
+    const agg = a
+      ? `<span class="ra-agg" data-tip="Медиана оценок · голосов ${a.n} · разброс ${a.lo}–${a.hi}">≈${a.med}<small>· ${a.n}</small></span>`
+      : `<span class="ra-agg none">—</span>`;
+    return `<div class="rarow cut">
+      ${avatarByName(p.nick || p.name)}
+      <div class="pcol"><span class="pnm">${esc(p.name)}${posArr(p).map(n => `<span class="posmini" data-tip="${esc(posLabel(n))}">${n}</span>`).join('')}</span>${p.nick ? `<span class="pnk">@${esc(p.nick)}</span>` : ''}</div>
+      <span class="ra-off" data-tip="Официальный MMR (ставит организатор)">${p.mmr != null ? p.mmr : '—'}<small>офиц.</small></span>
+      ${agg}
+      <input class="ra-in mmrvote" data-target="${p.id}" type="number" inputmode="numeric" placeholder="ммр" value="${mine != null ? mine : ''}">
+    </div>`;
+  }).join('');
+  return `<div class="ratewrap">
+    <div class="ratehead">
+      <button class="btn sm ghost" data-action="players">← База</button>
+      <h2>🗳 Народный MMR</h2>
+      <span style="flex:1"></span>
+      <span class="note">${esc(mineName)} · <b data-action="logout" style="cursor:pointer;color:var(--gold2)">выйти</b></span>
+    </div>
+    <div class="ratenote cut">Поставь каждому MMR — как считаешь по игре. Сохраняется сразу, менять можно в любой момент. На базе берётся <b>медиана</b> всех оценок, так что один голос погоду не делает. Себя в списке нет.</div>
+    ${list.length ? `<div class="ralist">${rows}</div>` : '<div class="empty"><span class="big">🧩</span>В базе пока некого оценивать.</div>'}
+  </div>`;
+}
+// Организатор: кто как оценил игрока (аудит накруток).
+async function mmrDetailModal(pid) {
+  const p = regById(pid); if (!p) return;
+  const ov = openModal(`<div class="mtitle">Оценки · ${esc(p.name)}</div><div class="mbody" id="mdBody" style="text-align:left">Загрузка…</div><div class="mrow"><span style="flex:1"></span><button class="btn primary" id="mdOk">Ок</button></div>`);
+  ov.querySelector('#mdOk').onclick = () => closeModal(ov);
+  ov.onclick = e => { if (e.target === ov && ov._downSelf) closeModal(ov); };
+  try {
+    await loadSB();
+    const { data, error } = await sb.rpc('rc_mmr_detail', { p_secret: rcSecret, p_target: pid });
+    if (error) throw error;
+    const a = MMR_AGG[pid];
+    const rows = (data || []).map(r => `<div class="mdrow"><span>${esc(r.rater)}</span><b>${r.mmr}</b></div>`).join('');
+    ov.querySelector('#mdBody').innerHTML = (data && data.length)
+      ? `<div class="note" style="margin-bottom:10px">Медиана ≈${a ? a.med : '—'} · голосов ${(data || []).length}${a ? ` · разброс ${a.lo}–${a.hi}` : ''}</div><div class="mdlist">${rows}</div>`
+      : '<div class="note">Пока никто не оценил этого игрока.</div>';
+  } catch (e) { ov.querySelector('#mdBody').innerHTML = '<div class="note">Не загрузилось — проверь, накатан ли SQL (mmr.sql).</div>'; }
 }
 /* ================= лобби (пикапы) ================= */
 let LB = { list: [], signups: [] };
@@ -4590,6 +4721,22 @@ document.addEventListener('click', async e => {
     try { await navigator.clipboard.writeText(link); toast('Ссылка на Зал славы скопирована', '📋', true); }
     catch (er) { toast('Ссылка: ' + link, '🔗'); }
   }
+  else if (a === 'ratepage') { view = { screen: 'rate', tid: null }; render(); regLoad(); mmrAggLoad(); mmrMineLoad(); }
+  else if (a === 'ratelogin') {
+    const u = (document.getElementById('rlUser').value || '').trim();
+    const pw = document.getElementById('rlPass').value || '';
+    if (!u || !pw) { toast('Введи ник и пароль', '✏️'); return; }
+    try {
+      await loadSB();
+      const { data, error } = await sb.rpc('rc_login', { p_username: u, p_password: pw });
+      if (error) throw error;
+      rcPlayer = { id: data, username: u.toLowerCase(), pass: pw };
+      localStorage.setItem('rc_player', JSON.stringify(rcPlayer));
+      await regLoad(); await mmrMineLoad(); mmrAggLoad(); renderTopbar(); render();
+      toast('Ты в аккаунте — оценивай', '🎮', true);
+    } catch (er) { uiAlert('Неверный ник или пароль. Нет аккаунта — попроси организатора включить вход.'); }
+  }
+  else if (a === 'mmrdetail') { if (isAdmin()) mmrDetailModal(el.dataset.pid); }
   else if (a === 'new') { view = { screen: 'create', tid: null }; render(); regLoad(); }
   else if (a === 'help') showHelp();
   else if (a === 'coachoff') { localStorage.setItem('turnir_coach2', '1'); render(); }
@@ -4752,7 +4899,7 @@ document.addEventListener('click', async e => {
     updateTimerUI();
   }
   else if (a === 'pstats') showPlayerStats(el.dataset.name);
-  else if (a === 'players') { view = { screen: 'players', tid: null }; render(); regLoad(); }
+  else if (a === 'players') { view = { screen: 'players', tid: null }; render(); regLoad(); mmrAggLoad(); }
   else if (a === 'lobbies') { view = { screen: 'lobbies', tid: null }; render(); lobbyLoad(); }
   else if (a === 'lobrefresh') { lobbyLoad(); }
   else if (a === 'lobcreate') { lobbyCreateModal(); }
@@ -4848,7 +4995,7 @@ document.addEventListener('click', async e => {
   else if (a === 'logout') {
     if (isPlayer()) { rcPlayer = null; localStorage.removeItem('rc_player'); toast('Вышел', '🔒'); view = { screen: 'players', tid: null }; render(); regLoad(); }
   }
-  else if (a === 'pprofile') { view = { screen: 'profile', pid: el.dataset.pid, tid: null }; render(); }
+  else if (a === 'pprofile') { view = { screen: 'profile', pid: el.dataset.pid, tid: null }; render(); mmrAggLoad(); }
   else if (a === 'wa') { const ph = (el.dataset.phone || '').replace(/[^\d]/g, ''); if (ph) window.open('https://wa.me/' + ph, '_blank', 'noopener'); }
   else if (a === 'pregdel') {
     if (!isAdmin()) return;
@@ -5065,6 +5212,7 @@ document.addEventListener('pointerup', () => { if (scHold) { clearTimeout(scHold
 document.addEventListener('pointercancel', () => { if (scHold) { clearTimeout(scHold); scHold = null; } });
 
 document.addEventListener('change', e => {
+  if (e.target.classList && e.target.classList.contains('mmrvote')) { mmrVote(e.target.dataset.target, e.target.value); return; }
   if (e.target.id === 'regMmr') { regMmrMin = +e.target.value; render(); return; }
   if (e.target.id === 'cDraws') { const pb = document.getElementById('ptsBox'); if (pb) pb.classList.toggle('hidden', !e.target.checked); return; }
   if (e.target.id === 'poAdv') {
@@ -5310,6 +5458,7 @@ document.getElementById('importFile').addEventListener('change', e => {
 const _qp0 = new URLSearchParams(location.search);
 const _joinParam = _qp0.get('join');
 const _hofParam = _qp0.get('hof');
+const _rateParam = _qp0.get('rate');
 if (_joinParam) {
   joinTid = _joinParam;
   view = { screen: 'join', tid: null };
@@ -5324,6 +5473,10 @@ if (_joinParam) {
   view = { screen: 'hof', tid: null };
   render();
   regLoad();            // имена/аватары игроков для зала славы
+} else if (_rateParam) {
+  view = { screen: 'rate', tid: null };
+  render();
+  regLoad().then(() => { mmrMineLoad(); }); mmrAggLoad();
 } else {
   render();
   initLiveFromURL();
@@ -5333,6 +5486,7 @@ ensureLobbyRealtime(); // живое обновление лобби/заяво�
 tourCloudLoad();       // восстановить турниры из облака (если вошёл организатором)
 hofCloudLoad();        // публичный архив турниров для Зала славы — видят ВСЕ
 liveCloudLoad(true);   // живой список турниров на главной — видят ВСЕ (не только организатор)
+mmrAggLoad();          // народный MMR (медианы оценок) — для базы и профилей
 window.addEventListener('focus', () => { if (view.screen === 'home') liveCloudLoad(); });
 </script>
 </body>
