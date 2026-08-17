@@ -554,6 +554,17 @@ canvas.confetti{position:fixed;inset:0;z-index:100;pointer-events:none}
 .podium .minor .prz{margin-left:auto}
 .mrow3{display:flex;gap:8px}
 .mrow3>div{flex:1;min-width:0}
+.hofstat{margin-top:4px}
+.hofrecs{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:12px;margin:16px 0 4px}
+.hofrec{--c:12px;display:flex;align-items:center;gap:11px;padding:13px 15px}
+.hofrec[data-action]{cursor:pointer;transition:border-color .12s}
+.hofrec[data-action]:hover{--bl:linear-gradient(135deg,var(--gold),var(--line) 60%)}
+.hofrec .hr-ico{font-size:22px;flex:none;line-height:1}
+.hofrec .hr-body{display:flex;flex-direction:column;min-width:0;flex:1}
+.hofrec .hr-l{font-family:var(--disp);font-size:9.5px;font-weight:500;letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
+.hofrec .hr-n{font-weight:700;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.hofrec .hr-v{flex:none;font-family:var(--disp);font-weight:700;font-size:16px;color:var(--gold2);white-space:nowrap;font-variant-numeric:tabular-nums}
+.hofrec .hr-u{font-size:10px;color:var(--muted);margin-left:3px;font-weight:500}
 /* цветные медали в рейтинге */
 .hmed{display:flex;gap:9px;flex:none;margin-left:auto}
 .hmed .m{display:inline-flex;align-items:center;gap:4px;width:34px;justify-content:flex-start;font-weight:800;font-size:13px;font-variant-numeric:tabular-nums}
@@ -997,9 +1008,25 @@ function prizeFund(t) {
 }
 // «300000» → «300 000 ₸». Пусто/0 → ''.
 function fmtMoney(n) { n = Math.round(+n || 0); if (n <= 0) return ''; return n.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ') + ' ₸'; }
+// Публичный архив турниров из облака — чтобы Зал славы видели ВСЕ (не только организатор),
+// в т.ч. по прямой ссылке ?hof. Локальные копии в приоритете.
+let ARCHIVE = [];
+async function hofCloudLoad() {
+  try {
+    await loadSB();
+    const { data, error } = await sb.from('rc_tournaments').select('data');
+    if (error) throw error;
+    ARCHIVE = (data || []).map(r => r.data).filter(x => x && x.id);
+    if (view.screen === 'hof' || view.screen === 'home') render();
+  } catch (e) { /* тихо — покажем что есть локально */ }
+}
+function allTournaments() {
+  const seen = new Set(DB.tournaments.map(t => t.id));
+  return DB.tournaments.concat(ARCHIVE.filter(t => !seen.has(t.id)));
+}
 function hallOfFame(limit = 8) {
   const agg = {};
-  for (const t of DB.tournaments) {
+  for (const t of allTournaments()) {
     const p = podium(t);
     [['first', 'g', 1], ['second', 's', 2], ['third', 'b', 3]].forEach(([k, f, place]) => {
       if (!p[k]) return;
@@ -1018,7 +1045,7 @@ function hallOfFame(limit = 8) {
 }
 // Чемпионы по турнирам (кто где когда) — только завершённые, свежие сверху.
 function hofTournaments() {
-  return DB.tournaments.filter(t => podium(t).first).map(t => {
+  return allTournaments().filter(t => podium(t).first).map(t => {
     const p = podium(t);
     return { name: t.name, date: t.createdAt, fmt: t.format,
       first: pname(t, p.first), firstMembers: entryHumans(t.players[p.first]),
@@ -1027,20 +1054,66 @@ function hofTournaments() {
       fund: prizeFund(t), p1: prizeForPlace(t, 1), p2: prizeForPlace(t, 2), p3: prizeForPlace(t, 3) };
   }).sort((a, b) => (b.date || 0) - (a.date || 0));
 }
-function screenHof() {
+// Сводка/рекорды для Зала славы.
+function hofStats() {
   const champs = hofTournaments();
   const ranking = hallOfFame(0);
   const totalWon = ranking.reduce((a, r) => a + r.won, 0);
+  let totalMatches = 0;
+  for (const t of allTournaments()) totalMatches += Object.values(t.matches).filter(m => matchDone(m) && !m.auto).length;
+  const mostTitles = ranking.filter(r => r.g > 0).sort((a, b) => b.g - a.g)[0] || null;
+  const richest = ranking.filter(r => r.won > 0).sort((a, b) => b.won - a.won)[0] || null;
+  let bigPrize = null;
+  for (const t of allTournaments()) {
+    const v = prizeForPlace(t, 1);
+    if (v > 0 && (!bigPrize || v > bigPrize.amount)) {
+      const champ = podium(t).first;
+      bigPrize = { amount: v, tour: t.name, who: champ ? pname(t, champ) : '' };
+    }
+  }
+  const played = {};
+  for (const t of allTournaments()) {
+    const uniq = {};
+    Object.values(t.players).forEach(pl => entryHumans(pl).forEach(nm => { uniq[nm.toLowerCase()] = nm; }));
+    Object.entries(uniq).forEach(([k, nm]) => { (played[k] = played[k] || { name: nm, n: 0 }).n++; });
+  }
+  const mostActive = Object.values(played).sort((a, b) => b.n - a.n)[0] || null;
+  return { champs, ranking, totalWon, totalMatches, mostTitles, richest, bigPrize, mostActive };
+}
+function screenHof() {
+  const S = hofStats();
+  const champs = S.champs, ranking = S.ranking, totalWon = S.totalWon;
   const money = totalWon > 0;
   const prizeRow = (label, name, amt) => name
     ? `<span class="ht-p ${label === '🏆' ? 'gold' : ''}" data-action="pstats" data-name="${esc(name)}" data-tip="Статистика">${label} ${esc(name)}${amt ? `<b class="prz">${fmtMoney(amt)}</b>` : ''}</span>`
     : '';
+  const rec = (ico, label, name, val, click) => name
+    ? `<div class="hofrec cut" ${click ? `data-action="pstats" data-name="${esc(name)}" data-tip="Статистика игрока"` : ''}>
+         <span class="hr-ico">${ico}</span>
+         <div class="hr-body"><span class="hr-l">${label}</span><span class="hr-n">${esc(name)}</span></div>
+         <span class="hr-v">${val}</span>
+       </div>` : '';
+  const records = [
+    rec('👑', 'Больше всех титулов', S.mostTitles && S.mostTitles.name, S.mostTitles ? `${S.mostTitles.g}<span class="hr-u">🥇</span>` : '', true),
+    money ? rec('💰', 'Главный богач', S.richest && S.richest.name, S.richest ? fmtMoney(S.richest.won) : '', true) : '',
+    money ? rec('🥇', 'Крупнейший приз', S.bigPrize && (S.bigPrize.who || S.bigPrize.tour), S.bigPrize ? fmtMoney(S.bigPrize.amount) : '', !!(S.bigPrize && S.bigPrize.who)) : '',
+    rec('🔥', 'Чаще всех играл', S.mostActive && S.mostActive.name, S.mostActive ? `${S.mostActive.n}<span class="hr-u">турн.</span>` : '', true)
+  ].filter(Boolean).join('');
   return `<div class="hofwrap">
     <div class="hofpage-head">
       <button class="btn sm ghost" data-action="home">← Назад</button>
       <h2>🏛 Зал славы</h2>
       <span class="note">${champs.length} турнир(ов) · ${ranking.length} с медалями${money ? ` · 💰 разыграно ${fmtMoney(totalWon)}` : ''}</span>
+      <span style="flex:1"></span>
+      <button class="btn sm ghost" data-action="hofshare" data-tip="Скопировать ссылку на Зал славы (кинуть в WhatsApp)">🔗 Поделиться</button>
     </div>
+    <div class="statrow hofstat">
+      <div class="stat cut"><b>${champs.length}</b><span>турниров</span></div>
+      <div class="stat cut"><b>${ranking.length}</b><span>призёров</span></div>
+      ${money ? `<div class="stat cut"><b>${fmtMoney(totalWon)}</b><span>разыграно</span></div>` : ''}
+      <div class="stat cut"><b>${S.totalMatches}</b><span>матчей</span></div>
+    </div>
+    ${records ? `<div class="hofrecs">${records}</div>` : ''}
     <div class="hofcols">
       <div class="hofsec cut">
         <div class="hofsec-h">🏆 Чемпионы турниров</div>
@@ -3087,7 +3160,10 @@ function renderTopbar() {
     <span class="spacer"></span>
     ${view.screen === 'home'
       ? `<button class="btn sm ghost" data-action="lobbies" data-tip="Лобби / пикапы: собрать катку, подать заявку">🎮 Лобби${(() => { const p = myPendingCount(); return p ? ` <span class="navbadge" data-tip="Новые заявки в твои лобби">${p}</span>` : ''; })()}</button>
+         <button class="btn sm ghost" data-action="hofpage" data-tip="Зал славы — чемпионы, рекорды, кто сколько выиграл">🏛 Зал славы</button>
          <button class="btn sm ghost" data-action="players" data-tip="База игроков: имена, ники, MMR, история">👥 Игроки</button>`
+      : view.screen === 'hof'
+      ? `<button class="btn sm ghost" data-action="home">← На главную</button>`
       : view.screen === 'players'
       ? `<button class="btn sm ghost" data-action="home">← На главную</button>`
       : view.screen === 'lobbies'
@@ -3095,7 +3171,7 @@ function renderTopbar() {
       : view.screen === 'profile'
       ? `<button class="btn sm ghost" data-action="players">← К игрокам</button>`
       : `${addBtn}<button class="btn sm ghost" data-action="home">← Все турниры</button>`}
-    ${['home', 'players', 'profile', 'lobbies'].includes(view.screen) ? loginBtn() : ''}
+    ${['home', 'players', 'profile', 'lobbies', 'hof'].includes(view.screen) ? loginBtn() : ''}
     ${view.screen === 'home' ? `<button class="btn primary sm" data-action="new">+ Новый турнир</button>` : ''}
     ${tbMenuHtml()}
   </div>`;
@@ -4466,7 +4542,15 @@ document.addEventListener('click', async e => {
   if (tbMenuOpen && a !== 'tbmenu') { tbMenuOpen = false; renderTopbar(); }
 
   if (a === 'home') { view = { screen: 'home', tid: null }; render(); liveCloudLoad(); }
-  else if (a === 'hofpage') { view = { screen: 'hof', tid: null }; render(); }
+  else if (a === 'hofpage') { view = { screen: 'hof', tid: null }; render(); hofCloudLoad(); regLoad(); }
+  else if (a === 'hofshare') {
+    const base = location.protocol === 'file:' ? PUB_BASE : location.origin + location.pathname;
+    const link = base + '?hof=1';
+    const text = '🏛 Зал славы · Random Cup\n' + link;
+    if (navigator.share && matchMedia('(hover:none)').matches) { try { await navigator.share({ text }); return; } catch (er) {} }
+    try { await navigator.clipboard.writeText(link); toast('Ссылка на Зал славы скопирована', '📋', true); }
+    catch (er) { toast('Ссылка: ' + link, '🔗'); }
+  }
   else if (a === 'new') { view = { screen: 'create', tid: null }; render(); regLoad(); }
   else if (a === 'help') showHelp();
   else if (a === 'coachoff') { localStorage.setItem('turnir_coach2', '1'); render(); }
@@ -5154,7 +5238,9 @@ document.getElementById('importFile').addEventListener('change', e => {
   e.target.value = '';
 });
 
-const _joinParam = new URLSearchParams(location.search).get('join');
+const _qp0 = new URLSearchParams(location.search);
+const _joinParam = _qp0.get('join');
+const _hofParam = _qp0.get('hof');
 if (_joinParam) {
   joinTid = _joinParam;
   view = { screen: 'join', tid: null };
@@ -5165,6 +5251,10 @@ if (_joinParam) {
     await Promise.all([regLoad(), signupsLoad()]);
     if (view.screen === 'join') render();
   })();
+} else if (_hofParam) {
+  view = { screen: 'hof', tid: null };
+  render();
+  regLoad();            // имена/аватары игроков для зала славы
 } else {
   render();
   initLiveFromURL();
@@ -5172,6 +5262,7 @@ if (_joinParam) {
 lobbyLoad();          // для бейджа «вас откликнули» на главной
 ensureLobbyRealtime(); // живое обновление лобби/заявок
 tourCloudLoad();       // восстановить турниры из облака (если вошёл организатором)
+hofCloudLoad();        // публичный архив турниров для Зала славы — видят ВСЕ
 liveCloudLoad(true);   // живой список турниров на главной — видят ВСЕ (не только организатор)
 window.addEventListener('focus', () => { if (view.screen === 'home') liveCloudLoad(); });
 </script>
