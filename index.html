@@ -825,6 +825,15 @@ canvas.confetti{position:fixed;inset:0;z-index:100;pointer-events:none}
 .mdlist{display:flex;flex-direction:column;gap:6px;max-height:52vh;overflow:auto}
 .mdrow{display:flex;justify-content:space-between;padding:7px 10px;border:1px solid var(--line);background:var(--panel2)}
 .mdrow b{color:var(--gold2);font-variant-numeric:tabular-nums}
+.ripreview{margin-top:10px;max-height:38vh;overflow:auto;display:flex;flex-direction:column;gap:4px}
+.rip-h{font-family:var(--disp);font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);margin-bottom:4px}
+.rip-row{display:flex;align-items:center;gap:10px;padding:5px 9px;border:1px solid var(--line);background:var(--panel2)}
+.rip-row .rip-n{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rip-row .rip-n i{color:var(--muted);font-size:12px}
+.rip-row .rip-m{font-family:var(--disp);font-weight:700;color:var(--gold2);font-variant-numeric:tabular-nums;flex:none}
+.rip-row .rip-s{font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;flex:none;padding:1px 7px;border-radius:2px}
+.rip-row .rip-s.ex{color:#7FC8A0;border:1px solid rgba(127,200,160,.4)}
+.rip-row .rip-s.nw{color:var(--gold2);border:1px solid var(--gold-deep)}
 .prow .ppeak{font-size:10px;color:var(--muted);background:var(--panel2);border:1px solid var(--line);padding:2px 8px;white-space:nowrap;flex-shrink:0}
 .prow .ptitle{font-size:11px;color:var(--gold2);font-weight:700;white-space:nowrap;flex-shrink:0}
 .prow .ptools{display:inline-flex;gap:1px;opacity:0;transition:opacity .12s;flex-shrink:0}
@@ -4335,6 +4344,7 @@ function draftHtml(t) {
       <span style="flex:1"></span>
       ${admin ? `<button class="btn ghost sm" data-action="signmode" data-tip="Что жмут игроки на отметке: «я иду» (драфт) или «ищу команду» (готовые стаки)">Отметка: ${mode === 'lft' ? '🔎 ищу команду' : '🎖 я иду'}</button>` : ''}
       ${admin ? `<button class="btn ghost sm" data-action="joinlink" data-tid="${t.id}" data-tname="${esc(t.name)}" data-tip="Ссылка «отметься на этот турнир» — в WhatsApp">🔗 Ссылка отметки</button>` : ''}
+      ${admin ? `<button class="btn ghost sm" data-action="draftimport" data-tip="Вставить список «иду» из WhatsApp — заведёт новых и отметит всех">📋 Импорт списка</button>` : ''}
       ${admin ? `<button class="btn ghost sm" data-action="draftaddteam" data-tip="Добавить готовую команду (стак)">＋ Команда</button>` : ''}
       ${admin ? `<button class="btn primary sm" data-action="draftform" ${ready < 2 ? 'disabled' : ''} data-tip="Собрать сетку/группы из команд">Сформировать сетку →</button>` : ''}
     </div>
@@ -4351,6 +4361,86 @@ function draftHtml(t) {
       </div>
     </div>
   </div>`;
+}
+// Разбор списка из WhatsApp: строка -> {name, nick, mmr}. Терпим к мусору («+💵», «+орг», номера, невидимые символы).
+function parseRosterList(text) {
+  return String(text || '').split(/\r?\n/).map(line => {
+    let s = line.replace(/[⁠​‎‏⁦-⁩]/g, '').trim();  // невидимые символы
+    if (!s) return null;
+    s = s.replace(/^\s*№?\s*\d+\s*[.)\-–—]?\s*/, '');   // ведущий номер «12.» / «12)»
+    s = s.replace(/^[\-–—•*·]+\s*/, '').trim();          // ведущие буллеты
+    let nick = '';
+    const pm = s.match(/\(@\s*([^)]+)\)/);               // ник в скобках (@...)
+    if (pm) { nick = pm[1].trim(); s = s.replace(pm[0], ' ').trim(); }
+    else { const am = s.match(/@(\S+)/); if (am) { nick = am[1].trim(); s = s.replace(am[0], ' ').trim(); } }
+    const nums = (s.match(/\d{3,5}/g) || []).map(Number).filter(n => n >= 1500 && n <= 15000);
+    const mmr = nums.length ? nums[0] : null;
+    let name = s;
+    const dash = name.search(/[—–\-]/);                  // имя — до тире, либо до самого числа ММР
+    if (dash > 0) name = name.slice(0, dash);
+    else if (mmr != null) { const idx = name.indexOf(String(mmr)); if (idx > 0) name = name.slice(0, idx); }
+    name = name.replace(/\bmmr\b|\bммр\b|\bпос\.?\s*\d?\b/gi, '').replace(/\s+/g, ' ').trim();
+    name = name.replace(/[—–\-:,.]+$/, '').trim();
+    if (!name && !nick) return null;
+    return { raw: line.trim(), name: name || nick, nick, mmr };
+  }).filter(Boolean);
+}
+function findPlayerByNameNick(name, nick) {
+  const nk = (nick || '').toLowerCase().trim(), nm = (name || '').toLowerCase().trim();
+  return (nk && DB.players.find(p => (p.nick || '').toLowerCase() === nk))
+      || (nm && DB.players.find(p => (p.name || '').toLowerCase() === nm))
+      || (nm && DB.players.find(p => (p.nick || '').toLowerCase() === nm))
+      || null;
+}
+async function commitRoster(t, entries) {
+  if (!isAdmin()) { uiAlert('Только организатор может импортировать список.'); return; }
+  let created = 0, matched = 0, marked = 0, failed = 0;
+  for (const e of entries) {
+    let p = findPlayerByNameNick(e.name, e.nick);
+    if (!p) {
+      p = { id: uid(), name: e.name || e.nick || 'Игрок', nick: e.nick || '', mmr: e.mmr, mmrHistory: [], pos: '', phone: '', note: '' };
+      try { await regUpsertRemote(p); DB.players.push(p); created++; }
+      catch (err) { failed++; continue; }
+    } else matched++;
+    const ok = await selfSignup(t.id, p.id, true, false);   // отметить «я иду» на этот турнир
+    if (ok) marked++;
+  }
+  t.opts.signup = 'going';                                   // режим отметки — «я иду» (драфт)
+  save(); persistLocal();
+  await signupsLoad();
+  render();
+  toast(`Готово: +${created} новых, ${matched} из базы, отмечено «иду» ${marked}${failed ? `, ошибок ${failed}` : ''}`, '📋', true);
+}
+function rosterImportModal(t) {
+  if (!isAdmin()) return;
+  const ov = openModal(`
+    <div class="mtitle">📋 Импорт списка «я иду»</div>
+    <div class="mbody" style="text-align:left">
+      <div class="note" style="margin-bottom:8px">Вставь список из WhatsApp — по одному в строке (имя, ММР, ник в скобках <b>(@ник)</b>). Найду существующих в базе, новых заведу с их ММР, и всех отмечу <b>«я иду»</b> на этот турнир.</div>
+      <textarea id="riText" rows="7" placeholder="1. Ильяс — 8500 MMR&#10;6. Шынгыс (@Asce) — 7000 MMR&#10;..."></textarea>
+      <div id="riPrev" class="ripreview"></div>
+    </div>
+    <div class="mrow"><span style="flex:1"></span><button class="btn ghost" id="riCancel">Отмена</button><button class="btn primary" id="riGo" disabled>Добавить</button></div>`, true);
+  let entries = [];
+  const upd = () => {
+    entries = parseRosterList(ov.querySelector('#riText').value);
+    const prev = ov.querySelector('#riPrev'), go = ov.querySelector('#riGo');
+    if (!entries.length) { prev.innerHTML = ''; go.disabled = true; go.textContent = 'Добавить'; return; }
+    prev.innerHTML = `<div class="rip-h">Распознано: ${entries.length}</div>` + entries.map(e => {
+      const p = findPlayerByNameNick(e.name, e.nick);
+      return `<div class="rip-row"><span class="rip-n">${esc(e.name || '—')}${e.nick ? ` <i>@${esc(e.nick)}</i>` : ''}</span><span class="rip-m">${e.mmr != null ? e.mmr : '—'}</span><span class="rip-s ${p ? 'ex' : 'nw'}">${p ? 'есть' : 'новый'}</span></div>`;
+    }).join('');
+    go.disabled = false; go.textContent = `Добавить ${entries.length} в пул «я иду»`;
+  };
+  ov.querySelector('#riText').addEventListener('input', upd);
+  ov.querySelector('#riCancel').onclick = () => closeModal(ov);
+  ov.onclick = e => { if (e.target === ov && ov._downSelf) closeModal(ov); };
+  ov.querySelector('#riGo').onclick = async () => {
+    const go = ov.querySelector('#riGo'); if (go.disabled) return;
+    go.disabled = true; go.textContent = 'Добавляю…';
+    await commitRoster(t, entries);
+    closeModal(ov);
+  };
 }
 function draftAddModal(t, tid) {
   const tm = (t.draftTeams || []).find(x => x.id === tid); if (!tm || !isAdmin()) return;
@@ -4752,6 +4842,7 @@ document.addEventListener('click', async e => {
     t.draftTeams.push({ id: uid(), captainId: p.id, name: p.nick || p.name, members: [p.id] });
     save(); render();
   }
+  else if (a === 'draftimport') { if (t && isAdmin()) rosterImportModal(t); }
   else if (a === 'draftaddteam') {
     if (!t || !isAdmin()) return;
     t.draftTeams = t.draftTeams || [];
