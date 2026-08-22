@@ -366,6 +366,14 @@ table.stand td.pcell{display:flex;align-items:center;gap:8px;min-width:0}
 table.stand td.pcell > span:nth-child(2){flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 table.stand tr.q td{color:var(--gold2)}
 table.stand td.num,table.stand th.num{text-align:center;width:34px}
+@media (max-width:760px){
+  table.stand td.num,table.stand th.num{width:26px}
+  table.stand td,table.stand th{padding:5px 3px}
+  table.stand td.pcell{gap:6px}
+  table.stand td.pcell .av{width:21px;height:21px;font-size:9.5px;border-radius:5px}
+  table.stand .qbadge{padding:1px 4px;margin-left:1px}
+  table.stand .tieord .tarr{padding:0 4px}
+}
 .qbadge{font-family:var(--disp);font-size:8.5px;font-weight:600;letter-spacing:.1em;color:#161204;background:linear-gradient(135deg,var(--gold2),var(--gold));padding:1px 6px;margin-left:2px}
 .tieord{display:inline-flex;flex-direction:column;gap:0;margin-left:6px;vertical-align:middle;border:1px solid var(--line2);border-radius:4px;overflow:hidden}
 .tieord .tarr{padding:0 5px;font-size:9px;line-height:1.35;color:var(--gold2)}
@@ -4587,11 +4595,13 @@ function groupsHtml(t, champ) {
     const gms = groupMatches(t, g);
     const gp = gms.filter(matchDone).length;
     const keyOf = s => drawsOn(t) ? s.pts : s.w;   // равны ⇒ тай-брейк
+    const groupDone = gms.length > 0 && gp === gms.length;   // все матчи сыграны
     const rows = st.map((s, i) => {
       const q = i < adv;
-      // Стрелки ручного тай-брейка — только МЕЖДУ равными (совпал key с соседом), у организатора, до плей-офф.
-      const canUp = !locked && i > 0 && keyOf(st[i - 1]) === keyOf(s);
-      const canDown = !locked && i < st.length - 1 && keyOf(st[i + 1]) === keyOf(s);
+      // Стрелки ручного тай-брейка — только когда группа доиграна (тогда и решают ничьи),
+      // у организатора, до плей-офф, и только МЕЖДУ равными. Иначе имена не влезают в таблицу.
+      const canUp = groupDone && !locked && i > 0 && keyOf(st[i - 1]) === keyOf(s);
+      const canDown = groupDone && !locked && i < st.length - 1 && keyOf(st[i + 1]) === keyOf(s);
       const tieCtl = (canUp || canDown)
         ? `<span class="tieord" data-tip="Ничья по очкам — расставь порядок вручную (кто проходит)">
              <button class="mini tarr" data-action="tiemove" data-gid="${g.id}" data-pid="${s.pid}" data-dir="-1" ${canUp ? '' : 'disabled'}>▲</button>
